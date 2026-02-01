@@ -1,0 +1,170 @@
+import { useState } from 'react'
+import { useParams, useNavigate, Link } from 'react-router-dom'
+import { ArrowRight, Pencil, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
+import { usePatient, useDeletePatient } from '@/hooks/usePatients'
+import {
+  PATIENT_STATUS_LABELS,
+  PAYMENT_FREQUENCY_LABELS,
+  DAY_LABELS,
+} from '@/lib/constants'
+import { cn } from '@/lib/utils'
+import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
+import { EmptyState } from '@/components/shared/EmptyState'
+import type { Patient, PatientStatus } from '@/types'
+
+const statusColors: Record<PatientStatus, string> = {
+  active: 'bg-green-100 text-green-700',
+  inactive: 'bg-gray-100 text-gray-700',
+  treatment_completed: 'bg-blue-100 text-blue-700',
+}
+
+const tabs = [
+  { id: 'details', label: 'פרטים' },
+  { id: 'appointments', label: 'פגישות' },
+  { id: 'sessions', label: 'טיפולים' },
+  { id: 'payments', label: 'תשלומים' },
+] as const
+
+function InfoField({ label, value }: { label: string; value?: string | number }) {
+  if (value === undefined || value === '') return null
+  return (
+    <div>
+      <dt className="text-sm text-muted-foreground">{label}</dt>
+      <dd className="text-sm font-medium mt-0.5">{value}</dd>
+    </div>
+  )
+}
+
+function DetailsTab({ patient }: { patient: Patient }) {
+  return (
+    <div className="space-y-6">
+      <div className="border border-border rounded-lg p-5">
+        <h3 className="text-base font-semibold mb-4">פרטים אישיים</h3>
+        <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <InfoField label="שם מלא" value={patient.fullName} />
+          <InfoField label="מספר זהות" value={patient.idNumber} />
+          <InfoField label="תאריך לידה" value={patient.dateOfBirth} />
+          <InfoField label="טלפון" value={patient.phone} />
+          <InfoField label="טלפון הורה" value={patient.parentPhone} />
+          <InfoField label="אימייל" value={patient.email} />
+          <InfoField label="כתובת" value={patient.address} />
+        </dl>
+      </div>
+
+      <div className="border border-border rounded-lg p-5">
+        <h3 className="text-base font-semibold mb-4">מידע רפואי</h3>
+        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <InfoField label="אבחנה ראשונית" value={patient.initialDiagnosis} />
+          <InfoField label="רקע רפואי" value={patient.medicalBackground} />
+          <InfoField label="מקור הפניה" value={patient.referralSource} />
+          <InfoField label="איש קשר לחירום" value={patient.emergencyContact} />
+          <InfoField label="טלפון חירום" value={patient.emergencyPhone} />
+        </dl>
+      </div>
+
+      <div className="border border-border rounded-lg p-5">
+        <h3 className="text-base font-semibold mb-4">סטטוס ותשלום</h3>
+        <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <InfoField label="תדירות תשלום" value={PAYMENT_FREQUENCY_LABELS[patient.paymentFrequency]} />
+          <InfoField label="מחיר טיפול" value={`₪${patient.sessionPrice}`} />
+          {patient.monthlyPrice !== undefined && (
+            <InfoField label="מחיר חודשי" value={`₪${patient.monthlyPrice}`} />
+          )}
+          {patient.recurringDay !== undefined && (
+            <InfoField label="יום קבוע" value={DAY_LABELS[String(patient.recurringDay)]} />
+          )}
+          <InfoField label="שעה קבועה" value={patient.recurringTime} />
+        </dl>
+      </div>
+
+      {patient.notes && (
+        <div className="border border-border rounded-lg p-5">
+          <h3 className="text-base font-semibold mb-2">הערות</h3>
+          <p className="text-sm text-muted-foreground whitespace-pre-wrap">{patient.notes}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function PatientProfilePage() {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const { data: patient, isLoading } = usePatient(id!)
+  const deleteMutation = useDeletePatient()
+  const [activeTab, setActiveTab] = useState<string>('details')
+
+  if (isLoading) return <LoadingSpinner />
+  if (!patient) return <EmptyState message="המטופל לא נמצא" />
+
+  function handleDelete() {
+    if (confirm(`האם למחוק את המטופל "${patient!.fullName}"?`)) {
+      deleteMutation.mutate(patient!.id, {
+        onSuccess: () => {
+          toast.success('המטופל נמחק')
+          navigate('/patients')
+        },
+        onError: () => toast.error('שגיאה במחיקת המטופל'),
+      })
+    }
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate('/patients')}
+            className="p-2 rounded-md hover:bg-muted transition-colors"
+            title="חזרה לרשימה"
+          >
+            <ArrowRight className="h-5 w-5" />
+          </button>
+          <h2 className="text-2xl font-bold">{patient.fullName}</h2>
+          <span className={cn('px-2.5 py-1 rounded-full text-xs font-medium', statusColors[patient.status])}>
+            {PATIENT_STATUS_LABELS[patient.status]}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link
+            to={`/patients/${id}/edit`}
+            className="flex items-center gap-2 h-9 px-4 rounded-md border border-input bg-background text-sm font-medium hover:bg-muted transition-colors"
+          >
+            <Pencil className="h-4 w-4" />
+            עריכה
+          </Link>
+          <button
+            onClick={handleDelete}
+            className="flex items-center gap-2 h-9 px-4 rounded-md border border-destructive/30 text-destructive text-sm font-medium hover:bg-destructive/10 transition-colors"
+          >
+            <Trash2 className="h-4 w-4" />
+            מחיקה
+          </button>
+        </div>
+      </div>
+
+      <div className="flex gap-1 border-b border-border mb-6">
+        {tabs.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={cn(
+              'px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px',
+              activeTab === tab.id
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'details' && <DetailsTab patient={patient} />}
+      {activeTab === 'appointments' && <EmptyState message="פגישות - בפיתוח" />}
+      {activeTab === 'sessions' && <EmptyState message="טיפולים - בפיתוח" />}
+      {activeTab === 'payments' && <EmptyState message="תשלומים - בפיתוח" />}
+    </div>
+  )
+}
