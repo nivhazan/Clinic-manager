@@ -42,9 +42,14 @@ export const router = createBrowserRouter([
           { path: ':id/edit', element: <PatientFormPage /> },
         ],
       },
-      { path: 'sessions', element: <SessionsPage /> },
-      { path: 'sessions/new', element: <SessionFormPage /> },
-      { path: 'sessions/:id', element: <SessionFormPage /> },
+      {
+        path: 'sessions',
+        children: [
+          { index: true, element: <SessionsPage /> },
+          { path: 'new', element: <SessionFormPage /> },
+          { path: ':id', element: <SessionFormPage /> },
+        ],
+      },
       { path: 'payments', element: <PaymentsPage /> },
       { path: 'expenses', element: <ExpensesPage /> },
       { path: 'tasks', element: <TasksPage /> },

@@ -4,17 +4,20 @@ import { ArrowRight, Pencil, Trash2, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { usePatient, useDeletePatient } from '@/hooks/usePatients'
 import { usePatientAppointments, useDeleteAppointment } from '@/hooks/useAppointments'
+import { usePatientSessions, useDeleteSession } from '@/hooks/useSessions'
 import {
   PATIENT_STATUS_LABELS,
   PAYMENT_FREQUENCY_LABELS,
   DAY_LABELS,
   APPOINTMENT_STATUS_LABELS,
   SESSION_TYPE_LABELS,
+  PROGRESS_LEVEL_LABELS,
+  COOPERATION_LEVEL_LABELS,
 } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { EmptyState } from '@/components/shared/EmptyState'
-import type { Patient, PatientStatus, Appointment, AppointmentStatus } from '@/types'
+import type { Patient, PatientStatus, Appointment, AppointmentStatus, TherapySession, ProgressLevel } from '@/types'
 
 const statusColors: Record<PatientStatus, string> = {
   active: 'bg-green-100 text-green-700',
@@ -189,6 +192,114 @@ function AppointmentsTab({ patientId }: { patientId: string }) {
   )
 }
 
+const progressColors: Record<ProgressLevel, string> = {
+  significant: 'bg-green-100 text-green-700',
+  good: 'bg-blue-100 text-blue-700',
+  moderate: 'bg-yellow-100 text-yellow-700',
+  minimal: 'bg-orange-100 text-orange-700',
+  no_change: 'bg-gray-100 text-gray-700',
+}
+
+function SessionsTab({ patientId }: { patientId: string }) {
+  const { data: sessions = [], isLoading } = usePatientSessions(patientId)
+  const deleteMutation = useDeleteSession()
+
+  function handleDelete(session: TherapySession) {
+    if (confirm(`האם למחוק טיפול מס' ${session.sessionNumber}?`)) {
+      deleteMutation.mutate(session.id, {
+        onSuccess: () => toast.success('הטיפול נמחק'),
+        onError: () => toast.error('שגיאה במחיקת הטיפול'),
+      })
+    }
+  }
+
+  if (isLoading) return <LoadingSpinner />
+
+  const sortedSessions = [...sessions].sort((a, b) => b.sessionDate.localeCompare(a.sessionDate))
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold">רשימת טיפולים</h3>
+        <Link
+          to={`/sessions/new?patientId=${patientId}`}
+          className="flex items-center gap-2 h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+        >
+          <Plus className="h-4 w-4" />
+          טיפול חדש
+        </Link>
+      </div>
+
+      {sortedSessions.length === 0 ? (
+        <EmptyState message="אין טיפולים למטופל זה" />
+      ) : (
+        <div className="space-y-3">
+          {sortedSessions.map(session => (
+            <div
+              key={session.id}
+              className="flex items-start gap-4 p-4 border border-border rounded-lg hover:bg-muted/30 transition-colors"
+            >
+              <div className="flex-1 space-y-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-base font-semibold">טיפול #{session.sessionNumber}</span>
+                  <span className="text-sm text-muted-foreground" dir="ltr">
+                    {new Intl.DateTimeFormat('he-IL', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric',
+                    }).format(new Date(session.sessionDate))}
+                  </span>
+                  <span className={cn('px-2 py-0.5 rounded-full text-xs font-medium', progressColors[session.progressLevel])}>
+                    {PROGRESS_LEVEL_LABELS[session.progressLevel]}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    שיתוף פעולה: {COOPERATION_LEVEL_LABELS[session.cooperationLevel]}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-1">מטרות</div>
+                    <div className="line-clamp-2">{session.goals}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-1">סיכום</div>
+                    <div className="line-clamp-2">{session.summary}</div>
+                  </div>
+                </div>
+
+                {session.homeAssignments && (
+                  <div className="text-sm">
+                    <div className="text-xs text-muted-foreground mb-1">משימות בית</div>
+                    <div className="line-clamp-1">{session.homeAssignments}</div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <Link
+                  to={`/sessions/${session.id}`}
+                  className="p-1.5 rounded-md hover:bg-muted transition-colors"
+                  title="עריכה"
+                >
+                  <Pencil className="h-4 w-4" />
+                </Link>
+                <button
+                  onClick={() => handleDelete(session)}
+                  className="p-1.5 rounded-md hover:bg-destructive/10 text-destructive transition-colors"
+                  title="מחיקה"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function PatientProfilePage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -264,7 +375,7 @@ export default function PatientProfilePage() {
 
       {activeTab === 'details' && <DetailsTab patient={patient} />}
       {activeTab === 'appointments' && <AppointmentsTab patientId={patient.id} />}
-      {activeTab === 'sessions' && <EmptyState message="טיפולים - בפיתוח" />}
+      {activeTab === 'sessions' && <SessionsTab patientId={patient.id} />}
       {activeTab === 'payments' && <EmptyState message="תשלומים - בפיתוח" />}
     </div>
   )
