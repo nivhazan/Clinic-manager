@@ -1,22 +1,33 @@
 import { useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowRight, Pencil, Trash2 } from 'lucide-react'
+import { ArrowRight, Pencil, Trash2, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { usePatient, useDeletePatient } from '@/hooks/usePatients'
+import { usePatientAppointments, useDeleteAppointment } from '@/hooks/useAppointments'
 import {
   PATIENT_STATUS_LABELS,
   PAYMENT_FREQUENCY_LABELS,
   DAY_LABELS,
+  APPOINTMENT_STATUS_LABELS,
+  SESSION_TYPE_LABELS,
 } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { EmptyState } from '@/components/shared/EmptyState'
-import type { Patient, PatientStatus } from '@/types'
+import type { Patient, PatientStatus, Appointment, AppointmentStatus } from '@/types'
 
 const statusColors: Record<PatientStatus, string> = {
   active: 'bg-green-100 text-green-700',
   inactive: 'bg-gray-100 text-gray-700',
   treatment_completed: 'bg-blue-100 text-blue-700',
+}
+
+const appointmentStatusColors: Record<AppointmentStatus, string> = {
+  scheduled: 'bg-blue-100 text-blue-700',
+  confirmed: 'bg-green-100 text-green-700',
+  completed: 'bg-gray-100 text-gray-700',
+  canceled: 'bg-red-100 text-red-700',
+  no_show: 'bg-orange-100 text-orange-700',
 }
 
 const tabs = [
@@ -82,6 +93,96 @@ function DetailsTab({ patient }: { patient: Patient }) {
         <div className="border border-border rounded-lg p-5">
           <h3 className="text-base font-semibold mb-2">הערות</h3>
           <p className="text-sm text-muted-foreground whitespace-pre-wrap">{patient.notes}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AppointmentsTab({ patientId }: { patientId: string }) {
+  const { data: appointments = [], isLoading } = usePatientAppointments(patientId)
+  const deleteMutation = useDeleteAppointment()
+
+  function handleDelete(appointment: Appointment) {
+    if (confirm(`האם למחוק את הפגישה מתאריך ${appointment.date}?`)) {
+      deleteMutation.mutate(appointment.id, {
+        onSuccess: () => toast.success('הפגישה נמחקה'),
+        onError: () => toast.error('שגיאה במחיקת הפגישה'),
+      })
+    }
+  }
+
+  if (isLoading) return <LoadingSpinner />
+
+  const sortedAppointments = [...appointments].sort((a, b) => {
+    const dateComp = b.date.localeCompare(a.date)
+    return dateComp !== 0 ? dateComp : b.time.localeCompare(a.time)
+  })
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold">רשימת פגישות</h3>
+        <Link
+          to={`/calendar/new?patientId=${patientId}`}
+          className="flex items-center gap-2 h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+        >
+          <Plus className="h-4 w-4" />
+          פגישה חדשה
+        </Link>
+      </div>
+
+      {sortedAppointments.length === 0 ? (
+        <EmptyState message="אין פגישות למטופל זה" />
+      ) : (
+        <div className="space-y-3">
+          {sortedAppointments.map(apt => (
+            <div key={apt.id} className="flex items-center gap-4 p-4 border border-border rounded-lg hover:bg-muted/30 transition-colors">
+              <div className="flex-1 grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">תאריך</div>
+                  <div className="text-sm font-medium" dir="ltr">
+                    {new Intl.DateTimeFormat('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(apt.date))}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">שעה</div>
+                  <div className="text-sm font-medium" dir="ltr">{apt.time}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">סוג</div>
+                  <div className="text-sm">{SESSION_TYPE_LABELS[apt.sessionType]}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">סטטוס</div>
+                  <span className={cn('px-2 py-0.5 rounded-full text-xs font-medium', appointmentStatusColors[apt.status])}>
+                    {APPOINTMENT_STATUS_LABELS[apt.status]}
+                  </span>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                {apt.isPaid && (
+                  <span className="text-xs text-green-600 font-medium">✓ שולם</span>
+                )}
+                <div className="flex items-center gap-2">
+                  <Link
+                    to={`/calendar/${apt.id}/edit`}
+                    className="p-1.5 rounded-md hover:bg-muted transition-colors"
+                    title="עריכה"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Link>
+                  <button
+                    onClick={() => handleDelete(apt)}
+                    className="p-1.5 rounded-md hover:bg-destructive/10 text-destructive transition-colors"
+                    title="מחיקה"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -162,7 +263,7 @@ export default function PatientProfilePage() {
       </div>
 
       {activeTab === 'details' && <DetailsTab patient={patient} />}
-      {activeTab === 'appointments' && <EmptyState message="פגישות - בפיתוח" />}
+      {activeTab === 'appointments' && <AppointmentsTab patientId={patient.id} />}
       {activeTab === 'sessions' && <EmptyState message="טיפולים - בפיתוח" />}
       {activeTab === 'payments' && <EmptyState message="תשלומים - בפיתוח" />}
     </div>

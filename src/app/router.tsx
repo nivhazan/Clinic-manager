@@ -3,6 +3,7 @@ import { AppLayout } from '@/components/layout/AppLayout'
 import LoginPage from '@/pages/login/LoginPage'
 import DashboardPage from '@/pages/dashboard/DashboardPage'
 import CalendarPage from '@/pages/calendar/CalendarPage'
+import AppointmentFormPage from '@/pages/calendar/AppointmentFormPage'
 import PatientsPage from '@/pages/patients/PatientsPage'
 import PatientProfilePage from '@/pages/patients/PatientProfilePage'
 import PatientFormPage from '@/pages/patients/PatientFormPage'
@@ -24,7 +25,14 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/dashboard" replace /> },
       { path: 'dashboard', element: <DashboardPage /> },
-      { path: 'calendar', element: <CalendarPage /> },
+      {
+        path: 'calendar',
+        children: [
+          { index: true, element: <CalendarPage /> },
+          { path: 'new', element: <AppointmentFormPage /> },
+          { path: ':id/edit', element: <AppointmentFormPage /> },
+        ],
+      },
       {
         path: 'patients',
         children: [
