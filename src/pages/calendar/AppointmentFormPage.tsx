@@ -106,6 +106,14 @@ export default function AppointmentFormPage() {
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
     const { name, value, type } = e.target
     const checked = (e.target as HTMLInputElement).checked
+
+    // Check if trying to cancel a paid appointment
+    if (name === 'status' && value === 'canceled' && appointment?.isPaid) {
+      if (!confirm('לתור הזה קיים תשלום מקושר. ביטול התור לא מוחק את התשלום. להמשיך?')) {
+        return
+      }
+    }
+
     setForm(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }))
     if (errors[name as keyof AppointmentFormData]) {
       setErrors(prev => ({ ...prev, [name]: undefined }))

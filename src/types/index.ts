@@ -87,6 +87,8 @@ export interface TherapySession {
   homeAssignments?: string
   nextSessionPlan?: string
   recommendations?: string
+  isPaid: boolean
+  paymentId?: string
   createdAt: string
   updatedAt: string
 }
@@ -94,6 +96,7 @@ export interface TherapySession {
 export interface Payment {
   id: string
   patientId: string
+  sessionId?: string
   appointmentId?: string
   date: string
   amount: number

@@ -3,7 +3,7 @@ import { getAll, setAll, generateId, now } from './api'
 
 const KEY = 'clinic_sessions'
 
-export type CreateSessionData = Omit<TherapySession, 'id' | 'sessionNumber' | 'createdAt' | 'updatedAt'>
+export type CreateSessionData = Omit<TherapySession, 'id' | 'sessionNumber' | 'isPaid' | 'paymentId' | 'createdAt' | 'updatedAt'>
 export type UpdateSessionData = Partial<CreateSessionData>
 
 export const sessionsService = {
@@ -32,6 +32,7 @@ export const sessionsService = {
       ...data,
       id: generateId(),
       sessionNumber: maxSessionNumber + 1,
+      isPaid: false,
       createdAt: now(),
       updatedAt: now(),
     }

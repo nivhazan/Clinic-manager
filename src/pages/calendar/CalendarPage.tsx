@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
-import { Link } from 'react-router-dom'
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, DollarSign } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAppointments, useDeleteAppointment } from '@/hooks/useAppointments'
 import { usePatients } from '@/hooks/usePatients'
@@ -94,13 +94,17 @@ function AppointmentCard({
   appointment,
   patientName,
   onEdit,
-  onDelete
+  onDelete,
+  onMarkPaid
 }: {
   appointment: Appointment
   patientName: string
   onEdit: () => void
   onDelete: () => void
+  onMarkPaid: () => void
 }) {
+  const canMarkPaid = !appointment.isPaid && (appointment.status === 'completed' || appointment.status === 'confirmed')
+
   return (
     <div className={cn(
       'p-3 rounded-md border text-xs space-y-1.5',
@@ -112,6 +116,15 @@ function AppointmentCard({
           <div className="text-xs opacity-80" dir="ltr">{appointment.time}</div>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
+          {canMarkPaid && (
+            <button
+              onClick={onMarkPaid}
+              className="p-1 rounded hover:bg-green-100 transition-colors text-green-700"
+              title="סמן כשולם"
+            >
+              <DollarSign className="h-3 w-3" />
+            </button>
+          )}
           <button
             onClick={onEdit}
             className="p-1 rounded hover:bg-black/5 transition-colors"
@@ -135,6 +148,7 @@ function AppointmentCard({
 }
 
 export default function CalendarPage() {
+  const navigate = useNavigate()
   const [viewMode, setViewMode] = useState<ViewMode>('week')
   const [currentDate, setCurrentDate] = useState(new Date())
   const { data: appointments = [], isLoading: appointmentsLoading } = useAppointments()
@@ -146,6 +160,10 @@ export default function CalendarPage() {
 
   const patientMap = useMemo(() => {
     return Object.fromEntries(patients.map(p => [p.id, p.fullName]))
+  }, [patients])
+
+  const patientPriceMap = useMemo(() => {
+    return Object.fromEntries(patients.map(p => [p.id, p.sessionPrice]))
   }, [patients])
 
   const appointmentsByDate = useMemo(() => {
@@ -213,6 +231,11 @@ export default function CalendarPage() {
         onError: () => toast.error('שגיאה במחיקת הפגישה'),
       })
     }
+  }
+
+  function handleMarkPaid(appointment: Appointment) {
+    const amount = patientPriceMap[appointment.patientId] || ''
+    navigate(`/payments/new?patientId=${appointment.patientId}&appointmentId=${appointment.id}&amount=${amount}`)
   }
 
   function getDateRangeText(): string {
@@ -354,9 +377,16 @@ export default function CalendarPage() {
                       </div>
                     </div>
                     <div className="flex flex-col gap-2">
-                      {apt.isPaid && (
+                      {apt.isPaid ? (
                         <span className="text-xs text-green-600 font-medium">✓ שולם</span>
-                      )}
+                      ) : (apt.status === 'completed' || apt.status === 'confirmed') ? (
+                        <button
+                          onClick={() => handleMarkPaid(apt)}
+                          className="text-xs px-2 py-1 rounded-md bg-green-50 text-green-700 hover:bg-green-100 transition-colors font-medium"
+                        >
+                          סמן כשולם
+                        </button>
+                      ) : null}
                       <div className="flex items-center gap-2">
                         <Link
                           to={`/calendar/${apt.id}/edit`}
@@ -418,6 +448,7 @@ export default function CalendarPage() {
                       patientName={patientMap[apt.patientId] || 'לא ידוע'}
                       onEdit={() => window.location.href = `/calendar/${apt.id}/edit`}
                       onDelete={() => handleDelete(apt)}
+                      onMarkPaid={() => handleMarkPaid(apt)}
                     />
                   ))}
                 </div>
@@ -516,6 +547,15 @@ export default function CalendarPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    {!apt.isPaid && (apt.status === 'completed' || apt.status === 'confirmed') && (
+                      <button
+                        onClick={() => handleMarkPaid(apt)}
+                        className="p-1.5 rounded-md hover:bg-green-100 text-green-700 transition-colors"
+                        title="סמן כשולם"
+                      >
+                        <DollarSign className="h-4 w-4" />
+                      </button>
+                    )}
                     <Link
                       to={`/calendar/${apt.id}/edit`}
                       className="p-1.5 rounded-md hover:bg-muted transition-colors"

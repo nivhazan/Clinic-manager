@@ -10,6 +10,7 @@ import PatientFormPage from '@/pages/patients/PatientFormPage'
 import SessionsPage from '@/pages/sessions/SessionsPage'
 import SessionFormPage from '@/pages/sessions/SessionFormPage'
 import PaymentsPage from '@/pages/payments/PaymentsPage'
+import PaymentFormPage from '@/pages/payments/PaymentFormPage'
 import ExpensesPage from '@/pages/expenses/ExpensesPage'
 import TasksPage from '@/pages/tasks/TasksPage'
 import ReportsPage from '@/pages/reports/ReportsPage'
@@ -50,7 +51,14 @@ export const router = createBrowserRouter([
           { path: ':id', element: <SessionFormPage /> },
         ],
       },
-      { path: 'payments', element: <PaymentsPage /> },
+      {
+        path: 'payments',
+        children: [
+          { index: true, element: <PaymentsPage /> },
+          { path: 'new', element: <PaymentFormPage /> },
+          { path: ':id/edit', element: <PaymentFormPage /> },
+        ],
+      },
       { path: 'expenses', element: <ExpensesPage /> },
       { path: 'tasks', element: <TasksPage /> },
       { path: 'reports', element: <ReportsPage /> },
