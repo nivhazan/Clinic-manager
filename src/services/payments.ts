@@ -51,7 +51,7 @@ export const paymentsService = {
       }
     }
 
-    // Mark linked appointment as paid
+    // Mark linked appointment as paid and confirmed
     if (data.appointmentId) {
       const appointments = getAll<Appointment>(APPOINTMENTS_KEY)
       const appointmentIndex = appointments.findIndex(a => a.id === data.appointmentId)
@@ -59,6 +59,7 @@ export const paymentsService = {
         appointments[appointmentIndex] = {
           ...appointments[appointmentIndex],
           isPaid: true,
+          status: 'confirmed',
           updatedAt: now(),
         }
         setAll(APPOINTMENTS_KEY, appointments)

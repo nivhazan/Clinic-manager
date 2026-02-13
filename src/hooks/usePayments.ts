@@ -32,14 +32,16 @@ export function useCreatePayment() {
     onSuccess: (_result, variables) => {
       queryClient.invalidateQueries({ queryKey: ['payments'] })
       queryClient.invalidateQueries({ queryKey: ['payments', 'patient', variables.patientId] })
+      // Always invalidate sessions + appointments so debt sections recompute
+      queryClient.invalidateQueries({ queryKey: ['sessions'], refetchType: 'all' })
+      queryClient.invalidateQueries({ queryKey: ['appointments'], refetchType: 'all' })
       if (variables.sessionId) {
         queryClient.invalidateQueries({ queryKey: ['sessions', variables.sessionId] })
         queryClient.invalidateQueries({ queryKey: ['sessions', 'patient', variables.patientId] })
-        queryClient.invalidateQueries({ queryKey: ['sessions'] })
       }
       if (variables.appointmentId) {
         queryClient.invalidateQueries({ queryKey: ['appointments', variables.appointmentId] })
-        queryClient.invalidateQueries({ queryKey: ['appointments'] })
+        queryClient.invalidateQueries({ queryKey: ['appointments', 'patient', variables.patientId] })
       }
     },
   })

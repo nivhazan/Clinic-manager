@@ -5,6 +5,7 @@ import { usePatients } from '@/hooks/usePatients'
 import { useAppointments } from '@/hooks/useAppointments'
 import { useSessions } from '@/hooks/useSessions'
 import { usePayments } from '@/hooks/usePayments'
+import { computeDebts } from '@/lib/debts'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { StatsCard } from './components/StatsCard'
 import { OpenDebtsPreview } from './components/OpenDebtsPreview'
@@ -52,18 +53,15 @@ export default function DashboardPage() {
     return date
   }, [today])
 
-  // KPI 1: Open Debts (Unpaid Sessions)
-  const unpaidSessions = useMemo(() => {
-    return sessions.filter(s => !s.isPaid)
-  }, [sessions])
+  // KPI 1: Open Debts - using shared computation for consistency with PaymentsPage
+  // KPI shows only REAL debts (overdue), not pending monthly
+  const debtResult = useMemo(() => {
+    return computeDebts(patients, sessions, payments, today)
+  }, [patients, sessions, payments, today])
 
-  const openDebtsAmount = useMemo(() => {
-    const patientMap = new Map(patients.map(p => [p.id, p]))
-    return unpaidSessions.reduce((sum, session) => {
-      const patient = patientMap.get(session.patientId)
-      return sum + (patient?.sessionPrice || 0)
-    }, 0)
-  }, [unpaidSessions, patients])
+  // For KPI card: show only real debts count (overdue), not pending monthly
+  const realDebtsCount = debtResult.overdueDebts.length
+  const realDebtsAmount = debtResult.totalOverdueAmount
 
   // KPI 2: Monthly Income
   const monthlyIncome = useMemo(() => {
@@ -122,8 +120,8 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatsCard
           title="חובות פתוחים"
-          value={unpaidSessions.length}
-          subtitle={`סה"כ ₪${openDebtsAmount.toLocaleString()}`}
+          value={realDebtsCount}
+          subtitle={`סה"כ ₪${realDebtsAmount.toLocaleString()}`}
           icon={DollarSign}
           onClick={() => navigate('/payments')}
         />
@@ -153,7 +151,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Open Debts Preview */}
-      <OpenDebtsPreview sessions={unpaidSessions} patients={patients} />
+      <OpenDebtsPreview debts={debtResult.allDebts} />
 
       {/* Grid for Upcoming Appointments and Recent Sessions */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

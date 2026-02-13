@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { usePayment, useCreatePayment, useUpdatePayment } from '@/hooks/usePayments'
 import { usePatients } from '@/hooks/usePatients'
 import { usePatientAppointments } from '@/hooks/useAppointments'
 import { usePatientSessions } from '@/hooks/useSessions'
+import { ensureSessionForAppointment } from '@/services/sessions'
 import { PAYMENT_METHOD_LABELS, PAYMENT_TYPE_LABELS } from '@/lib/constants'
 import { FormField } from '@/components/shared/FormField'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
@@ -47,7 +49,10 @@ function toFormData(payment: any): PaymentFormData {
   }
 }
 
-function fromFormData(data: PaymentFormData) {
+function fromFormData(data: PaymentFormData, billingPeriod?: string) {
+  const now = new Date()
+  const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+
   return {
     patientId: data.patientId,
     sessionId: data.sessionId.trim() || undefined,
@@ -56,6 +61,7 @@ function fromFormData(data: PaymentFormData) {
     amount: Number(data.amount),
     paymentMethod: data.paymentMethod,
     paymentType: data.paymentType,
+    billingPeriod: data.paymentType === 'monthly' ? (billingPeriod || currentPeriod) : undefined,
     notes: data.notes.trim() || undefined,
   }
 }
@@ -77,6 +83,7 @@ export default function PaymentFormPage() {
   const [searchParams] = useSearchParams()
   const isEdit = !!id
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { data: payment, isLoading: paymentLoading } = usePayment(id ?? '')
   const { data: patients = [], isLoading: patientsLoading } = usePatients()
   const createMutation = useCreatePayment()
@@ -84,6 +91,7 @@ export default function PaymentFormPage() {
 
   const [form, setForm] = useState<PaymentFormData>(EMPTY_FORM)
   const [errors, setErrors] = useState<FormErrors>({})
+  const [sessionAutoResolved, setSessionAutoResolved] = useState(false)
 
   // Load patient sessions and appointments when patientId changes
   const { data: sessions = [] } = usePatientSessions(form.patientId)
@@ -97,13 +105,17 @@ export default function PaymentFormPage() {
       const prefilledSessionId = searchParams.get('sessionId')
       const prefilledAppointmentId = searchParams.get('appointmentId')
       const prefilledAmount = searchParams.get('amount')
-      if (prefilledPatientId || prefilledSessionId || prefilledAppointmentId || prefilledAmount) {
+      const prefilledDate = searchParams.get('date')
+      const prefilledPaymentType = searchParams.get('paymentType') as PaymentType | null
+      if (prefilledPatientId || prefilledSessionId || prefilledAppointmentId || prefilledAmount || prefilledPaymentType || prefilledDate) {
         setForm(prev => ({
           ...prev,
           ...(prefilledPatientId && { patientId: prefilledPatientId }),
           ...(prefilledSessionId && { sessionId: prefilledSessionId }),
           ...(prefilledAppointmentId && { appointmentId: prefilledAppointmentId }),
           ...(prefilledAmount && { amount: prefilledAmount }),
+          ...(prefilledDate && { date: prefilledDate }),
+          ...(prefilledPaymentType && { paymentType: prefilledPaymentType }),
         }))
       }
     }
@@ -118,6 +130,36 @@ export default function PaymentFormPage() {
       }
     }
   }, [form.sessionId, sessions])
+
+  // Auto-select/create session when appointmentId is prefilled (e.g. from calendar "$")
+  useEffect(() => {
+    if (!form.appointmentId || form.sessionId || isEdit || sessionAutoResolved) return
+
+    // Check React Query cache first
+    const linkedSession = sessions.find(s => s.appointmentId === form.appointmentId)
+    if (linkedSession) {
+      setForm(prev => ({ ...prev, sessionId: linkedSession.id }))
+      setSessionAutoResolved(true)
+      return
+    }
+
+    // Find or create session directly from localStorage
+    const resolved = ensureSessionForAppointment(form.appointmentId)
+    if (resolved) {
+      queryClient.invalidateQueries({ queryKey: ['sessions'] })
+      setForm(prev => ({ ...prev, sessionId: resolved.id }))
+    }
+    setSessionAutoResolved(true)
+  }, [form.appointmentId, form.sessionId, sessions, isEdit, sessionAutoResolved, queryClient])
+
+  // Warning only when auto-resolution attempted and failed (appointment not found)
+  const prefillWarning = useMemo(() => {
+    const urlAppointmentId = searchParams.get('appointmentId')
+    if (!urlAppointmentId || isEdit) return ''
+    if (!sessionAutoResolved) return ''
+    if (form.sessionId) return ''
+    return 'לא ניתן לקשר טיפול לפגישה זו - ניתן לבחור ידנית'
+  }, [searchParams, isEdit, sessionAutoResolved, form.sessionId])
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
     const { name, value } = e.target
@@ -135,7 +177,8 @@ export default function PaymentFormPage() {
       return
     }
 
-    const data = fromFormData(form)
+    const billingPeriodFromUrl = searchParams.get('billingPeriod') ?? undefined
+    const data = fromFormData(form, billingPeriodFromUrl)
 
     if (isEdit) {
       updateMutation.mutate(
@@ -244,6 +287,12 @@ export default function PaymentFormPage() {
                 )}
               </select>
             </FormField>
+
+            {prefillWarning && (
+              <div className="col-span-full text-sm text-orange-600 bg-orange-50 border border-orange-200 p-2 rounded-md">
+                {prefillWarning}
+              </div>
+            )}
 
             <FormField label="תאריך תשלום" htmlFor="date" required error={errors.date}>
               <input id="date" name="date" type="date" value={form.date} onChange={handleChange} className={INPUT} />

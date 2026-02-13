@@ -102,6 +102,7 @@ export interface Payment {
   amount: number
   paymentMethod: PaymentMethod
   paymentType: PaymentType
+  billingPeriod?: string // "YYYY-MM" for monthly payments
   notes?: string
   createdAt: string
   updatedAt: string

@@ -1,27 +1,39 @@
-import { useState, useMemo } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useState, useMemo, useEffect } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, DollarSign } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAppointments, useDeleteAppointment } from '@/hooks/useAppointments'
 import { usePatients } from '@/hooks/usePatients'
+import { ensureAllRecurringAppointments } from '@/services/recurring'
 import {
   APPOINTMENT_STATUS_LABELS,
   SESSION_TYPE_LABELS,
   DAY_LABELS,
 } from '@/lib/constants'
 import { cn } from '@/lib/utils'
+import { formatYMDLocal } from '@/lib/dates'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { EmptyState } from '@/components/shared/EmptyState'
 import type { Appointment, AppointmentStatus } from '@/types'
 
 type ViewMode = 'day' | 'week' | 'month'
 
+// Base status colors (for non-payment-related display)
 const statusColors: Record<AppointmentStatus, string> = {
   scheduled: 'bg-blue-100 text-blue-700 border-blue-200',
   confirmed: 'bg-green-100 text-green-700 border-green-200',
   completed: 'bg-gray-100 text-gray-700 border-gray-200',
   canceled: 'bg-red-100 text-red-700 border-red-200',
   no_show: 'bg-orange-100 text-orange-700 border-orange-200',
+}
+
+// Payment-based colors for calendar cards (GREEN=paid, RED=unpaid past, YELLOW=monthly pending)
+const paymentStatusColors = {
+  paid: 'bg-green-100 text-green-700 border-green-300',      // GREEN #16a34a
+  debt: 'bg-red-100 text-red-700 border-red-300',            // RED #dc2626
+  pending: 'bg-yellow-100 text-yellow-700 border-yellow-300', // YELLOW #facc15
+  scheduled: 'bg-blue-100 text-blue-700 border-blue-200',    // Default for future
 }
 
 const HEBREW_MONTHS = [
@@ -65,10 +77,6 @@ function getMonthDates(baseDate: Date) {
   return dates
 }
 
-function formatDate(date: Date): string {
-  return date.toISOString().split('T')[0]
-}
-
 function formatDisplayDate(date: Date): string {
   return new Intl.DateTimeFormat('he-IL', {
     day: '2-digit',
@@ -90,6 +98,23 @@ function isSameMonth(date: Date, referenceDate: Date): boolean {
          date.getFullYear() === referenceDate.getFullYear()
 }
 
+function getAppointmentPaymentColor(appointment: Appointment): string {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const aptDate = new Date(appointment.date)
+
+  if (appointment.isPaid) {
+    return paymentStatusColors.paid // GREEN
+  }
+  if (appointment.status === 'canceled') {
+    return statusColors.canceled
+  }
+  if (aptDate < today) {
+    return paymentStatusColors.debt // RED - past and unpaid
+  }
+  return paymentStatusColors.scheduled // BLUE - future
+}
+
 function AppointmentCard({
   appointment,
   patientName,
@@ -108,7 +133,7 @@ function AppointmentCard({
   return (
     <div className={cn(
       'p-3 rounded-md border text-xs space-y-1.5',
-      statusColors[appointment.status]
+      getAppointmentPaymentColor(appointment)
     )}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
@@ -118,7 +143,7 @@ function AppointmentCard({
         <div className="flex items-center gap-1 flex-shrink-0">
           {canMarkPaid && (
             <button
-              onClick={onMarkPaid}
+              onClick={(e) => { e.stopPropagation(); onMarkPaid() }}
               className="p-1 rounded hover:bg-green-100 transition-colors text-green-700"
               title="סמן כשולם"
             >
@@ -126,14 +151,14 @@ function AppointmentCard({
             </button>
           )}
           <button
-            onClick={onEdit}
+            onClick={(e) => { e.stopPropagation(); onEdit() }}
             className="p-1 rounded hover:bg-black/5 transition-colors"
             title="עריכה"
           >
             <Pencil className="h-3 w-3" />
           </button>
           <button
-            onClick={onDelete}
+            onClick={(e) => { e.stopPropagation(); onDelete() }}
             className="p-1 rounded hover:bg-black/5 transition-colors"
             title="מחיקה"
           >
@@ -149,11 +174,27 @@ function AppointmentCard({
 
 export default function CalendarPage() {
   const navigate = useNavigate()
-  const [viewMode, setViewMode] = useState<ViewMode>('week')
+  const [searchParams, setSearchParams] = useSearchParams()
   const [currentDate, setCurrentDate] = useState(new Date())
+
+  // Get view mode from URL or default to week
+  const viewMode: ViewMode = (searchParams.get('view') as ViewMode) || 'week'
+
+  function setViewMode(mode: ViewMode) {
+    setSearchParams({ view: mode })
+  }
+  const queryClient = useQueryClient()
   const { data: appointments = [], isLoading: appointmentsLoading } = useAppointments()
   const { data: patients = [], isLoading: patientsLoading } = usePatients()
   const deleteMutation = useDeleteAppointment()
+
+  // Backfill recurring appointments on mount
+  useEffect(() => {
+    const created = ensureAllRecurringAppointments()
+    if (created > 0) {
+      queryClient.invalidateQueries({ queryKey: ['appointments'] })
+    }
+  }, [queryClient])
 
   const weekDates = useMemo(() => getWeekDates(currentDate), [currentDate])
   const monthDates = useMemo(() => getMonthDates(currentDate), [currentDate])
@@ -181,7 +222,7 @@ export default function CalendarPage() {
   }, [appointments])
 
   const upcomingAppointments = useMemo(() => {
-    const today = formatDate(new Date())
+    const today = formatYMDLocal(new Date())
     return appointments
       .filter(apt => apt.date >= today && apt.status !== 'canceled' && apt.status !== 'completed')
       .sort((a, b) => {
@@ -215,13 +256,18 @@ export default function CalendarPage() {
     setCurrentDate(newDate)
   }
 
-  function handleToday() {
-    setCurrentDate(new Date())
-  }
-
   function handleDayClick(date: Date) {
     setCurrentDate(date)
-    setViewMode('day')
+    setSearchParams({ view: 'day' })
+  }
+
+  function handleCreateAppointment(date: Date, time?: string) {
+    const dateStr = formatYMDLocal(date)
+    if (time) {
+      navigate(`/calendar/new?date=${dateStr}&time=${time}`)
+    } else {
+      navigate(`/calendar/new?date=${dateStr}`)
+    }
   }
 
   function handleDelete(appointment: Appointment) {
@@ -235,7 +281,7 @@ export default function CalendarPage() {
 
   function handleMarkPaid(appointment: Appointment) {
     const amount = patientPriceMap[appointment.patientId] || ''
-    navigate(`/payments/new?patientId=${appointment.patientId}&appointmentId=${appointment.id}&amount=${amount}`)
+    navigate(`/payments/new?patientId=${appointment.patientId}&appointmentId=${appointment.id}&amount=${amount}&date=${appointment.date}`)
   }
 
   function getDateRangeText(): string {
@@ -289,7 +335,7 @@ export default function CalendarPage() {
                   : 'hover:bg-muted'
               )}
             >
-              יום
+              יומי
             </button>
             <button
               onClick={() => setViewMode('week')}
@@ -300,7 +346,7 @@ export default function CalendarPage() {
                   : 'hover:bg-muted'
               )}
             >
-              שבוע
+              שבועי
             </button>
             <button
               onClick={() => setViewMode('month')}
@@ -311,17 +357,9 @@ export default function CalendarPage() {
                   : 'hover:bg-muted'
               )}
             >
-              חודש
+              חודשי
             </button>
           </div>
-
-          {/* Today Button */}
-          <button
-            onClick={handleToday}
-            className="px-3 py-1.5 rounded-md border border-input bg-background text-sm font-medium hover:bg-muted transition-colors"
-          >
-            היום
-          </button>
 
           {/* Date Range */}
           <div className="text-sm font-medium min-w-[200px] text-center">
@@ -345,12 +383,8 @@ export default function CalendarPage() {
             {DAY_LABELS[String(currentDate.getDay())]} - {formatDisplayDate(currentDate)}
           </h3>
           {(() => {
-            const dateStr = formatDate(currentDate)
+            const dateStr = formatYMDLocal(currentDate)
             const dayAppointments = appointmentsByDate[dateStr] || []
-
-            if (dayAppointments.length === 0) {
-              return <EmptyState message="אין פגישות ליום זה" />
-            }
 
             return (
               <div className="space-y-3">
@@ -406,6 +440,15 @@ export default function CalendarPage() {
                     </div>
                   </div>
                 ))}
+
+                {/* Add appointment button - always visible */}
+                <button
+                  onClick={() => handleCreateAppointment(currentDate)}
+                  className="w-full p-4 border-2 border-dashed border-muted-foreground/30 rounded-lg hover:border-primary/50 hover:bg-primary/5 transition-colors flex items-center justify-center gap-2 text-muted-foreground hover:text-primary"
+                >
+                  <Plus className="h-5 w-5" />
+                  <span className="text-sm font-medium">הוספת תור</span>
+                </button>
               </div>
             )
           })()}
@@ -416,7 +459,7 @@ export default function CalendarPage() {
       {viewMode === 'week' && (
         <div className="grid grid-cols-7 gap-3">
           {weekDates.map((date, index) => {
-            const dateStr = formatDate(date)
+            const dateStr = formatYMDLocal(date)
             const dayAppointments = appointmentsByDate[dateStr] || []
 
             return (
@@ -451,6 +494,17 @@ export default function CalendarPage() {
                       onMarkPaid={() => handleMarkPaid(apt)}
                     />
                   ))}
+                  {/* Add appointment button - always visible in week view */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleCreateAppointment(date)
+                    }}
+                    className="w-full p-2 border-2 border-dashed border-muted-foreground/20 rounded-md hover:border-primary/40 hover:bg-primary/5 transition-colors flex items-center justify-center gap-1 text-muted-foreground hover:text-primary"
+                  >
+                    <Plus className="h-3 w-3" />
+                    <span className="text-[10px] font-medium">הוסף תור</span>
+                  </button>
                 </div>
               </div>
             )
@@ -473,14 +527,14 @@ export default function CalendarPage() {
           {/* Calendar Grid */}
           <div className="grid grid-cols-7 gap-2">
             {monthDates.map((date, index) => {
-              const dateStr = formatDate(date)
+              const dateStr = formatYMDLocal(date)
               const dayAppointments = appointmentsByDate[dateStr] || []
               const isCurrentMonth = isSameMonth(date, currentDate)
 
               return (
                 <button
                   key={index}
-                  onClick={() => handleDayClick(date)}
+                  onClick={() => handleCreateAppointment(date)}
                   className={cn(
                     'border border-border rounded-lg p-3 min-h-[100px] text-right hover:bg-muted/50 transition-colors',
                     !isCurrentMonth && 'bg-muted/20 text-muted-foreground',
@@ -503,7 +557,7 @@ export default function CalendarPage() {
                           key={apt.id}
                           className={cn(
                             'text-[10px] px-1.5 py-0.5 rounded truncate',
-                            statusColors[apt.status]
+                            getAppointmentPaymentColor(apt)
                           )}
                           dir="ltr"
                         >

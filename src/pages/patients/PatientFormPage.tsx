@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { usePatient, useCreatePatient, useUpdatePatient } from '@/hooks/usePatients'
+import { ensureRecurringAppointmentsForPatient } from '@/services/recurring'
 import {
   PATIENT_STATUS_LABELS,
   PAYMENT_FREQUENCY_LABELS,
@@ -127,6 +129,7 @@ export default function PatientFormPage() {
   const isEdit = !!id
   const navigate = useNavigate()
   const { data: patient, isLoading } = usePatient(id ?? '')
+  const queryClient = useQueryClient()
   const createMutation = useCreatePatient()
   const updateMutation = useUpdatePatient()
 
@@ -160,6 +163,10 @@ export default function PatientFormPage() {
         { id: id!, data },
         {
           onSuccess: () => {
+            const count = ensureRecurringAppointmentsForPatient(id!)
+            if (count > 0) {
+              queryClient.invalidateQueries({ queryKey: ['appointments'] })
+            }
             toast.success('פרטי המטופל עודכנו')
             navigate(`/patients/${id}`)
           },
@@ -169,6 +176,10 @@ export default function PatientFormPage() {
     } else {
       createMutation.mutate(data, {
         onSuccess: (created) => {
+          const count = ensureRecurringAppointmentsForPatient(created.id)
+          if (count > 0) {
+            queryClient.invalidateQueries({ queryKey: ['appointments'] })
+          }
           toast.success('המטופל נוסף בהצלחה')
           navigate(`/patients/${created.id}`)
         },
