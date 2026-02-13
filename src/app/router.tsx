@@ -12,6 +12,7 @@ import SessionFormPage from '@/pages/sessions/SessionFormPage'
 import PaymentsPage from '@/pages/payments/PaymentsPage'
 import PaymentFormPage from '@/pages/payments/PaymentFormPage'
 import ExpensesPage from '@/pages/expenses/ExpensesPage'
+import ExpenseFormPage from '@/pages/expenses/ExpenseFormPage'
 import TasksPage from '@/pages/tasks/TasksPage'
 import ReportsPage from '@/pages/reports/ReportsPage'
 
@@ -59,7 +60,14 @@ export const router = createBrowserRouter([
           { path: ':id/edit', element: <PaymentFormPage /> },
         ],
       },
-      { path: 'expenses', element: <ExpensesPage /> },
+      {
+        path: 'expenses',
+        children: [
+          { index: true, element: <ExpensesPage /> },
+          { path: 'new', element: <ExpenseFormPage /> },
+          { path: ':id/edit', element: <ExpenseFormPage /> },
+        ],
+      },
       { path: 'tasks', element: <TasksPage /> },
       { path: 'reports', element: <ReportsPage /> },
     ],

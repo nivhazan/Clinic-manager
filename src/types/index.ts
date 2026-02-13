@@ -172,3 +172,39 @@ export interface Task {
   createdAt: string
   updatedAt: string
 }
+
+// ========== Documents ==========
+
+export type DocumentOwnerType = 'payment' | 'expense' | 'patient' | 'session' | 'other'
+export type DocumentFileType = 'pdf' | 'jpg' | 'jpeg' | 'png' | 'webp'
+export type OcrStatus = 'pending' | 'processing' | 'done' | 'failed'
+
+export interface ExtractedFields {
+  amount?: number
+  date?: string
+  vendor?: string
+  docNumber?: string
+  confidence?: {
+    amount?: number
+    date?: number
+    vendor?: number
+    docNumber?: number
+  }
+}
+
+export interface Document {
+  id: string
+  ownerType: DocumentOwnerType
+  ownerId?: string
+  fileData: string // Base64 encoded file data
+  fileType: DocumentFileType
+  originalFileName: string
+  fileSizeBytes: number
+  uploadedAt: string
+  ocrStatus: OcrStatus
+  ocrText?: string
+  extractedFields?: ExtractedFields
+  ocrError?: string
+  createdAt: string
+  updatedAt: string
+}

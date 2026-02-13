@@ -1,10 +1,10 @@
-import { CrudListPage } from '@/components/crud'
+import { CrudFormPage } from '@/components/crud'
 import { expensesConfig } from '@/features/expenses/expenses.config'
 import { expensesCrudHooks } from '@/hooks/useExpenses'
 
-export default function ExpensesPage() {
+export default function ExpenseFormPage() {
   return (
-    <CrudListPage
+    <CrudFormPage
       config={expensesConfig}
       hooks={expensesCrudHooks}
     />
