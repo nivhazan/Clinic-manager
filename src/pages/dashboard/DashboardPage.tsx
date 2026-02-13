@@ -6,7 +6,8 @@ import { useAppointments } from '@/hooks/useAppointments'
 import { useSessions } from '@/hooks/useSessions'
 import { usePayments } from '@/hooks/usePayments'
 import { computeDebts } from '@/lib/debts'
-import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
+import { SkeletonStats, SkeletonCard, SkeletonList } from '@/components/ui/Skeleton'
+import { PageHeader } from '@/components/layout'
 import { StatsCard } from './components/StatsCard'
 import { OpenDebtsPreview } from './components/OpenDebtsPreview'
 import { UpcomingAppointments } from './components/UpcomingAppointments'
@@ -109,12 +110,22 @@ export default function DashboardPage() {
   }, [sessions])
 
   if (patientsLoading || appointmentsLoading || sessionsLoading || paymentsLoading) {
-    return <LoadingSpinner />
+    return (
+      <div className="space-y-6">
+        <PageHeader title="לוח בקרה" />
+        <SkeletonStats cards={4} />
+        <SkeletonCard />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <SkeletonList items={5} />
+          <SkeletonList items={5} />
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold">לוח בקרה</h2>
+      <PageHeader title="לוח בקרה" />
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

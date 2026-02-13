@@ -51,13 +51,14 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
 
 Select.displayName = 'Select'
 
-// Native select wrapper for simple cases
+// Native select wrapper (supports both children and options)
 export interface NativeSelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   error?: boolean
+  options?: SelectOption[]
 }
 
 export const NativeSelect = forwardRef<HTMLSelectElement, NativeSelectProps>(
-  ({ className, error, children, ...props }, ref) => {
+  ({ className, error, options, children, ...props }, ref) => {
     return (
       <div className="relative w-full">
         <select
@@ -72,7 +73,13 @@ export const NativeSelect = forwardRef<HTMLSelectElement, NativeSelectProps>(
           )}
           {...props}
         >
-          {children}
+          {options
+            ? options.map(option => (
+                <option key={option.value} value={option.value} disabled={option.disabled}>
+                  {option.label}
+                </option>
+              ))
+            : children}
         </select>
         <ChevronDown className="pointer-events-none absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
       </div>

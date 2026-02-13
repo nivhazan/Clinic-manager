@@ -1,15 +1,36 @@
 import { useState, useMemo } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { Plus, Search, Pencil, Trash2 } from 'lucide-react'
-import { toast } from 'sonner'
+import { useNavigate } from 'react-router-dom'
+import { Plus, Pencil, Trash2 } from 'lucide-react'
 import { usePayments, useDeletePayment } from '@/hooks/usePayments'
 import { usePatients } from '@/hooks/usePatients'
 import { useSessions } from '@/hooks/useSessions'
 import { PAYMENT_METHOD_LABELS, PAYMENT_TYPE_LABELS } from '@/lib/constants'
 import { computeDebts } from '@/lib/debts'
-import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
+import { PageHeader, FilterBar } from '@/components/layout'
+import {
+  Button,
+  Badge,
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+  TableEmpty,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+  ConfirmDialog,
+  toast,
+} from '@/components/ui'
+import { SkeletonTable } from '@/components/ui/Skeleton'
 import { EmptyState } from '@/components/shared/EmptyState'
-import type { PaymentMethod, Payment } from '@/types'
+import type { Payment } from '@/types'
 
 const HEBREW_MONTHS = [
   'ינואר',
@@ -26,14 +47,8 @@ const HEBREW_MONTHS = [
   'דצמבר',
 ]
 
-const tabs = [
-  { id: 'payments', label: 'תשלומים' },
-  { id: 'schedules', label: 'תשלומים קבועים' },
-  { id: 'invoices', label: 'חשבוניות' },
-] as const
-
-const paymentMethodFilters: Array<{ value: PaymentMethod | 'all'; label: string }> = [
-  { value: 'all', label: 'הכל' },
+const paymentMethodFilters = [
+  { value: 'all', label: 'כל האמצעים' },
   { value: 'cash', label: 'מזומן' },
   { value: 'bank_transfer', label: 'העברה בנקאית' },
   { value: 'credit_card', label: 'כרטיס אשראי' },
@@ -43,33 +58,27 @@ const paymentMethodFilters: Array<{ value: PaymentMethod | 'all'; label: string 
 ]
 
 export default function PaymentsPage() {
-  const [activeTab, setActiveTab] = useState<string>('payments')
-
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold">תשלומים</h2>
-      </div>
+      <PageHeader title="תשלומים" />
 
-      <div className="flex gap-1 border-b border-border mb-6">
-        {tabs.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
-              activeTab === tab.id
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <Tabs defaultValue="payments">
+        <TabsList>
+          <TabsTrigger value="payments">תשלומים</TabsTrigger>
+          <TabsTrigger value="schedules">תשלומים קבועים</TabsTrigger>
+          <TabsTrigger value="invoices">חשבוניות</TabsTrigger>
+        </TabsList>
 
-      {activeTab === 'payments' && <PaymentsTab />}
-      {activeTab === 'schedules' && <EmptyState message="תשלומים קבועים - בפיתוח" />}
-      {activeTab === 'invoices' && <EmptyState message="חשבוניות - בפיתוח" />}
+        <TabsContent value="payments">
+          <PaymentsTab />
+        </TabsContent>
+        <TabsContent value="schedules">
+          <EmptyState message="תשלומים קבועים - בפיתוח" />
+        </TabsContent>
+        <TabsContent value="invoices">
+          <EmptyState message="חשבוניות - בפיתוח" />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
@@ -80,9 +89,11 @@ function PaymentsTab() {
   const { data: patients = [], isLoading: patientsLoading } = usePatients()
   const { data: sessions = [], isLoading: sessionsLoading } = useSessions()
   const deleteMutation = useDeletePayment()
+
   const [search, setSearch] = useState('')
-  const [patientFilter, setPatientFilter] = useState<string>('all')
-  const [methodFilter, setMethodFilter] = useState<PaymentMethod | 'all'>('all')
+  const [patientFilter, setPatientFilter] = useState('all')
+  const [methodFilter, setMethodFilter] = useState('all')
+  const [deleteTarget, setDeleteTarget] = useState<Payment | null>(null)
 
   const today = useMemo(() => {
     const date = new Date()
@@ -90,20 +101,16 @@ function PaymentsTab() {
     return date
   }, [])
 
-  // Build patient map for lookups
   const patientMap = useMemo(() => {
     return new Map(patients.map(p => [p.id, p]))
   }, [patients])
 
-  // Calculate debts using shared computation
   const debtResult = useMemo(() => {
     return computeDebts(patients, sessions, payments, today)
   }, [patients, sessions, payments, today])
 
-  const overdueDebts = debtResult.overdueDebts
-  const pendingMonthly = debtResult.pendingMonthly
+  const { overdueDebts, pendingMonthly } = debtResult
 
-  // Build enriched payments with patient names (handle deleted patients)
   const enrichedPayments = useMemo(() => {
     return payments.map(p => ({
       ...p,
@@ -114,7 +121,9 @@ function PaymentsTab() {
   const filtered = enrichedPayments.filter(p => {
     const term = search.trim().toLowerCase()
     const matchesSearch =
-      !term || p.patientName.toLowerCase().includes(term) || (p.notes?.toLowerCase().includes(term) ?? false)
+      !term ||
+      p.patientName.toLowerCase().includes(term) ||
+      (p.notes?.toLowerCase().includes(term) ?? false)
     const matchesPatient = patientFilter === 'all' || p.patientId === patientFilter
     const matchesMethod = methodFilter === 'all' || p.paymentMethod === methodFilter
     return matchesSearch && matchesPatient && matchesMethod
@@ -122,242 +131,264 @@ function PaymentsTab() {
 
   const sortedPayments = [...filtered].sort((a, b) => b.date.localeCompare(a.date))
 
-  function handleDelete(payment: Payment) {
-    const patientName = patientMap.get(payment.patientId)?.fullName ?? 'מטופל לא נמצא'
-    if (confirm(`האם למחוק תשלום של ${patientName} בסך ₪${payment.amount}?`)) {
-      deleteMutation.mutate(payment.id, {
-        onSuccess: () => toast.success('התשלום נמחק'),
-        onError: () => toast.error('שגיאה במחיקת התשלום'),
-      })
-    }
+  function handleDelete() {
+    if (!deleteTarget) return
+    deleteMutation.mutate(deleteTarget.id, {
+      onSuccess: () => {
+        toast.success({ title: 'התשלום נמחק' })
+        setDeleteTarget(null)
+      },
+      onError: () => toast.error({ title: 'שגיאה במחיקת התשלום' }),
+    })
   }
 
-  if (paymentsLoading || patientsLoading || sessionsLoading) return <LoadingSpinner />
-
+  const isLoading = paymentsLoading || patientsLoading || sessionsLoading
   const activePatients = patients.filter(p => p.status === 'active')
+
+  const patientFilterOptions = [
+    { value: 'all', label: 'כל המטופלים' },
+    ...activePatients.map(p => ({ value: p.id, label: p.fullName })),
+  ]
 
   return (
     <div className="space-y-6">
-      {/* Overdue Debts Section (Red) */}
+      {/* Overdue Debts (Red) */}
       {overdueDebts.length > 0 && (
-        <div className="border border-red-200 bg-red-50 rounded-lg p-5">
-          <h3 className="text-lg font-semibold mb-4 text-red-900">חובות</h3>
-          <div className="space-y-2">
-            {overdueDebts.map((debt, idx) => (
-              <div
-                key={idx}
-                className="flex items-center gap-4 p-3 bg-white border border-red-200 rounded-md hover:bg-red-50/50 transition-colors"
-              >
-                <div className="flex-1 grid grid-cols-1 sm:grid-cols-4 gap-3 text-sm">
-                  <div>
-                    <div className="text-xs text-muted-foreground mb-1">מטופל</div>
-                    <div className="font-medium">{debt.patientName}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground mb-1">פירוט</div>
+        <Card className="border-red-200 bg-red-50">
+          <CardHeader>
+            <CardTitle className="text-red-900">חובות</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {overdueDebts.map((debt, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center gap-4 p-3 bg-white border border-red-200 rounded-md hover:bg-red-50/50 transition-colors"
+                >
+                  <div className="flex-1 grid grid-cols-1 sm:grid-cols-4 gap-3 text-sm">
                     <div>
-                      {debt.type === 'session'
-                        ? `טיפול #${debt.sessionNumber}`
-                        : `חיוב חודשי - ${HEBREW_MONTHS[debt.month!]}`}
+                      <div className="text-xs text-muted-foreground mb-1">מטופל</div>
+                      <div className="font-medium">{debt.patientName}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">פירוט</div>
+                      <div>
+                        {debt.type === 'session'
+                          ? `טיפול #${debt.sessionNumber}`
+                          : `חיוב חודשי - ${HEBREW_MONTHS[debt.month!]}`}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">תאריך</div>
+                      <div dir="ltr">
+                        {debt.type === 'session'
+                          ? new Intl.DateTimeFormat('he-IL', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              year: 'numeric',
+                            }).format(new Date(debt.sessionDate!))
+                          : `${String(debt.month! + 1).padStart(2, '0')}/${debt.year}`}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">סכום</div>
+                      <div className="font-medium">₪{debt.amount.toLocaleString()}</div>
                     </div>
                   </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground mb-1">תאריך</div>
-                    <div dir="ltr">
-                      {debt.type === 'session'
-                        ? new Intl.DateTimeFormat('he-IL', {
-                            day: '2-digit',
-                            month: '2-digit',
-                            year: 'numeric',
-                          }).format(new Date(debt.sessionDate!))
-                        : `${String(debt.month! + 1).padStart(2, '0')}/${debt.year}`}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground mb-1">סכום</div>
-                    <div className="font-medium">₪{debt.amount.toLocaleString()}</div>
-                  </div>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => {
+                      if (debt.type === 'session') {
+                        navigate(
+                          `/payments/new?patientId=${debt.patientId}&sessionId=${debt.sessionId}&amount=${debt.amount}`
+                        )
+                      } else {
+                        const period = `${debt.year}-${String((debt.month ?? 0) + 1).padStart(2, '0')}`
+                        navigate(
+                          `/payments/new?patientId=${debt.patientId}&amount=${debt.amount}&paymentType=monthly&billingPeriod=${period}`
+                        )
+                      }
+                    }}
+                  >
+                    צור תשלום
+                  </Button>
                 </div>
-                <button
-                  onClick={() => {
-                    if (debt.type === 'session') {
-                      navigate(
-                        `/payments/new?patientId=${debt.patientId}&sessionId=${debt.sessionId}&amount=${debt.amount}`,
-                      )
-                    } else {
-                      const period = `${debt.year}-${String((debt.month ?? 0) + 1).padStart(2, '0')}`
-                      navigate(`/payments/new?patientId=${debt.patientId}&amount=${debt.amount}&paymentType=monthly&billingPeriod=${period}`)
-                    }
-                  }}
-                  className="px-4 py-2 rounded-md bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors whitespace-nowrap"
-                >
-                  צור תשלום
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
-      {/* Pending Monthly Section (Yellow) */}
+      {/* Pending Monthly (Yellow) */}
       {pendingMonthly.length > 0 && (
-        <div className="border border-yellow-200 bg-yellow-50 rounded-lg p-5">
-          <h3 className="text-lg font-semibold mb-4 text-yellow-900">ממתינים חודשיים</h3>
-          <div className="space-y-2">
-            {pendingMonthly.map((debt, idx) => (
-              <div
-                key={idx}
-                className="flex items-center gap-4 p-3 bg-white border border-yellow-200 rounded-md hover:bg-yellow-50/50 transition-colors"
-              >
-                <div className="flex-1 grid grid-cols-1 sm:grid-cols-4 gap-3 text-sm">
-                  <div>
-                    <div className="text-xs text-muted-foreground mb-1">מטופל</div>
-                    <div className="font-medium">{debt.patientName}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground mb-1">פירוט</div>
-                    <div>חיוב חודשי - {HEBREW_MONTHS[debt.month!]}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground mb-1">חודש</div>
-                    <div dir="ltr">{`${String(debt.month! + 1).padStart(2, '0')}/${debt.year}`}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground mb-1">סכום</div>
-                    <div className="font-medium">₪{debt.amount.toLocaleString()}</div>
-                  </div>
-                </div>
-                <button
-                  onClick={() => {
-                    const period = `${debt.year}-${String((debt.month ?? 0) + 1).padStart(2, '0')}`
-                    navigate(`/payments/new?patientId=${debt.patientId}&amount=${debt.amount}&paymentType=monthly&billingPeriod=${period}`)
-                  }}
-                  className="px-4 py-2 rounded-md bg-yellow-600 text-white text-sm font-medium hover:bg-yellow-700 transition-colors whitespace-nowrap"
+        <Card className="border-yellow-200 bg-yellow-50">
+          <CardHeader>
+            <CardTitle className="text-yellow-900">ממתינים חודשיים</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {pendingMonthly.map((debt, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center gap-4 p-3 bg-white border border-yellow-200 rounded-md hover:bg-yellow-50/50 transition-colors"
                 >
-                  צור תשלום
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
+                  <div className="flex-1 grid grid-cols-1 sm:grid-cols-4 gap-3 text-sm">
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">מטופל</div>
+                      <div className="font-medium">{debt.patientName}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">פירוט</div>
+                      <div>חיוב חודשי - {HEBREW_MONTHS[debt.month!]}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">חודש</div>
+                      <div dir="ltr">{`${String(debt.month! + 1).padStart(2, '0')}/${debt.year}`}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">סכום</div>
+                      <div className="font-medium">₪{debt.amount.toLocaleString()}</div>
+                    </div>
+                  </div>
+                  <Button
+                    variant="success"
+                    size="sm"
+                    onClick={() => {
+                      const period = `${debt.year}-${String((debt.month ?? 0) + 1).padStart(2, '0')}`
+                      navigate(
+                        `/payments/new?patientId=${debt.patientId}&amount=${debt.amount}&paymentType=monthly&billingPeriod=${period}`
+                      )
+                    }}
+                  >
+                    צור תשלום
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
-      {/* Filters + Search */}
-      <div className="flex items-center gap-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="חיפוש לפי שם מטופל..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full h-10 ps-10 pe-3 rounded-md border border-input bg-background text-sm"
-          />
-        </div>
-        <select
-          value={patientFilter}
-          onChange={e => setPatientFilter(e.target.value)}
-          className="h-10 px-3 rounded-md border border-input bg-background text-sm"
-        >
-          <option value="all">כל המטופלים</option>
-          {activePatients.map(p => (
-            <option key={p.id} value={p.id}>
-              {p.fullName}
-            </option>
-          ))}
-        </select>
-        <select
-          value={methodFilter}
-          onChange={e => setMethodFilter(e.target.value as PaymentMethod | 'all')}
-          className="h-10 px-3 rounded-md border border-input bg-background text-sm"
-        >
-          {paymentMethodFilters.map(mf => (
-            <option key={mf.value} value={mf.value}>
-              {mf.label}
-            </option>
-          ))}
-        </select>
-        <Link
-          to="/payments/new"
-          className="flex items-center gap-2 h-10 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors whitespace-nowrap"
-        >
-          <Plus className="h-4 w-4" />
+      {/* Filters + New Payment Button */}
+      <FilterBar
+        search={{
+          value: search,
+          onChange: setSearch,
+          placeholder: 'חיפוש לפי שם מטופל...',
+        }}
+        filters={[
+          {
+            value: patientFilter,
+            onChange: setPatientFilter,
+            options: patientFilterOptions,
+          },
+          {
+            value: methodFilter,
+            onChange: setMethodFilter,
+            options: paymentMethodFilters,
+          },
+        ]}
+      >
+        <Button leftIcon={<Plus className="h-4 w-4" />} onClick={() => navigate('/payments/new')}>
           תשלום חדש
-        </Link>
-      </div>
+        </Button>
+      </FilterBar>
 
       {/* Payments Table */}
-      {sortedPayments.length === 0 ? (
-        <EmptyState
-          message={
-            search || patientFilter !== 'all' || methodFilter !== 'all'
-              ? 'לא נמצאו תוצאות'
-              : 'אין תשלומים רשומים'
-          }
-        />
+      {isLoading ? (
+        <SkeletonTable rows={8} cols={7} />
       ) : (
-        <div className="border border-border rounded-lg overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-muted/50">
-                <th className="text-start text-sm font-medium px-4 py-3">מטופל</th>
-                <th className="text-start text-sm font-medium px-4 py-3">תאריך</th>
-                <th className="text-start text-sm font-medium px-4 py-3">סכום</th>
-                <th className="text-start text-sm font-medium px-4 py-3">אמצעי תשלום</th>
-                <th className="text-start text-sm font-medium px-4 py-3">סוג</th>
-                <th className="text-start text-sm font-medium px-4 py-3">הערות</th>
-                <th className="text-start text-sm font-medium px-4 py-3">פעולות</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedPayments.map(payment => (
-                <tr
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>מטופל</TableHead>
+              <TableHead>תאריך</TableHead>
+              <TableHead>סכום</TableHead>
+              <TableHead>אמצעי תשלום</TableHead>
+              <TableHead>סוג</TableHead>
+              <TableHead>הערות</TableHead>
+              <TableHead>פעולות</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sortedPayments.length === 0 ? (
+              <TableEmpty
+                colSpan={7}
+                message={
+                  search || patientFilter !== 'all' || methodFilter !== 'all'
+                    ? 'לא נמצאו תוצאות'
+                    : 'אין תשלומים רשומים'
+                }
+              />
+            ) : (
+              sortedPayments.map(payment => (
+                <TableRow
                   key={payment.id}
+                  clickable
                   onClick={() => navigate(`/payments/${payment.id}/edit`)}
-                  className="border-t border-border hover:bg-muted/30 cursor-pointer transition-colors"
                 >
-                  <td className="px-4 py-3 text-sm font-medium">{payment.patientName}</td>
-                  <td className="px-4 py-3 text-sm" dir="ltr">
+                  <TableCell className="font-medium">{payment.patientName}</TableCell>
+                  <TableCell dir="ltr">
                     {new Intl.DateTimeFormat('he-IL', {
                       day: '2-digit',
                       month: '2-digit',
                       year: 'numeric',
                     }).format(new Date(payment.date))}
-                  </td>
-                  <td className="px-4 py-3 text-sm font-medium">₪{payment.amount.toLocaleString()}</td>
-                  <td className="px-4 py-3 text-sm">{PAYMENT_METHOD_LABELS[payment.paymentMethod]}</td>
-                  <td className="px-4 py-3 text-sm">{PAYMENT_TYPE_LABELS[payment.paymentType]}</td>
-                  <td className="px-4 py-3 text-sm max-w-xs truncate">{payment.notes || '-'}</td>
-                  <td className="px-4 py-3 text-sm">
+                  </TableCell>
+                  <TableCell className="font-medium">
+                    ₪{payment.amount.toLocaleString()}
+                  </TableCell>
+                  <TableCell>{PAYMENT_METHOD_LABELS[payment.paymentMethod]}</TableCell>
+                  <TableCell>
+                    <Badge variant="neutral">{PAYMENT_TYPE_LABELS[payment.paymentType]}</Badge>
+                  </TableCell>
+                  <TableCell className="max-w-xs truncate">{payment.notes || '-'}</TableCell>
+                  <TableCell>
                     <div className="flex items-center gap-1">
-                      <button
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         onClick={e => {
                           e.stopPropagation()
                           navigate(`/payments/${payment.id}/edit`)
                         }}
-                        className="p-1.5 rounded hover:bg-muted transition-colors"
                         title="עריכה"
                       >
                         <Pencil className="h-4 w-4" />
-                      </button>
-                      <button
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-destructive hover:bg-destructive/10"
                         onClick={e => {
                           e.stopPropagation()
-                          handleDelete(payment)
+                          setDeleteTarget(payment)
                         }}
-                        className="p-1.5 rounded hover:bg-destructive/10 text-destructive transition-colors"
                         title="מחיקה"
                       >
                         <Trash2 className="h-4 w-4" />
-                      </button>
+                      </Button>
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
       )}
+
+      <ConfirmDialog
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title="מחיקת תשלום"
+        message={`האם למחוק תשלום של ${patientMap.get(deleteTarget?.patientId ?? '')?.fullName ?? ''} בסך ₪${deleteTarget?.amount ?? 0}?`}
+        confirmText="מחק"
+        cancelText="ביטול"
+        variant="danger"
+        loading={deleteMutation.isPending}
+      />
     </div>
   )
 }

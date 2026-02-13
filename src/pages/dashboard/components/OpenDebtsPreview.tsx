@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import type { DebtItem } from '@/lib/debts'
+import { Card, CardHeader, CardTitle, CardContent, Button } from '@/components/ui'
 import { EmptyState } from '@/components/shared/EmptyState'
 
 const HEBREW_MONTHS = [
@@ -14,36 +15,38 @@ interface OpenDebtsPreviewProps {
 export function OpenDebtsPreview({ debts }: OpenDebtsPreviewProps) {
   const navigate = useNavigate()
 
-  // Separate into overdue (red) and pending (yellow)
   const overdueDebts = debts.filter(d => d.isOverdue)
   const pendingDebts = debts.filter(d => !d.isOverdue)
 
   if (debts.length === 0) {
     return (
-      <div className="border border-green-200 bg-green-50 rounded-lg p-5">
-        <h3 className="text-lg font-semibold mb-4 text-green-700">חובות פתוחים</h3>
-        <EmptyState message="אין חובות פתוחים" />
-      </div>
+      <Card className="border-green-200 bg-green-50">
+        <CardHeader>
+          <CardTitle className="text-green-700">חובות פתוחים</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <EmptyState message="אין חובות פתוחים" />
+        </CardContent>
+      </Card>
     )
   }
 
   function handleCreatePayment(debt: DebtItem) {
     if (debt.type === 'session') {
       navigate(
-        `/payments/new?patientId=${debt.patientId}&sessionId=${debt.sessionId}&amount=${debt.amount}`,
+        `/payments/new?patientId=${debt.patientId}&sessionId=${debt.sessionId}&amount=${debt.amount}`
       )
     } else {
       const period = `${debt.year}-${String((debt.month ?? 0) + 1).padStart(2, '0')}`
-      navigate(`/payments/new?patientId=${debt.patientId}&amount=${debt.amount}&paymentType=monthly&billingPeriod=${period}`)
+      navigate(
+        `/payments/new?patientId=${debt.patientId}&amount=${debt.amount}&paymentType=monthly&billingPeriod=${period}`
+      )
     }
   }
 
-  function DebtRow({ debt, colorClass }: { debt: DebtItem; colorClass: 'red' | 'yellow' }) {
-    const borderClass = colorClass === 'red' ? 'border-red-300' : 'border-yellow-300'
-    const bgHoverClass = colorClass === 'red' ? 'hover:bg-red-50' : 'hover:bg-yellow-50'
-    const buttonClass = colorClass === 'red'
-      ? 'bg-red-600 hover:bg-red-700'
-      : 'bg-yellow-600 hover:bg-yellow-700'
+  function DebtRow({ debt, variant }: { debt: DebtItem; variant: 'danger' | 'warning' }) {
+    const borderClass = variant === 'danger' ? 'border-red-300' : 'border-yellow-300'
+    const bgHoverClass = variant === 'danger' ? 'hover:bg-red-50' : 'hover:bg-yellow-50'
 
     return (
       <div
@@ -79,12 +82,13 @@ export function OpenDebtsPreview({ debts }: OpenDebtsPreviewProps) {
             <div className="font-medium">₪{debt.amount.toLocaleString()}</div>
           </div>
         </div>
-        <button
+        <Button
+          variant={variant}
+          size="sm"
           onClick={() => handleCreatePayment(debt)}
-          className={`px-4 py-2 rounded-md text-white text-sm font-medium transition-colors whitespace-nowrap ${buttonClass}`}
         >
           צור תשלום
-        </button>
+        </Button>
       </div>
     )
   }
@@ -93,50 +97,58 @@ export function OpenDebtsPreview({ debts }: OpenDebtsPreviewProps) {
     <div className="space-y-4">
       {/* Overdue debts (RED) */}
       {overdueDebts.length > 0 && (
-        <div className="border border-red-300 bg-red-50 rounded-lg p-5">
-          <h3 className="text-lg font-semibold mb-4 text-red-700">חובות ({overdueDebts.length})</h3>
-          <div className="space-y-2">
-            {overdueDebts.slice(0, 3).map((debt, idx) => (
-              <DebtRow
-                key={`overdue-${debt.patientId}-${debt.sessionId || debt.month}-${idx}`}
-                debt={debt}
-                colorClass="red"
-              />
-            ))}
-          </div>
-          {overdueDebts.length > 3 && (
-            <button
-              onClick={() => navigate('/payments')}
-              className="mt-3 text-sm text-red-700 hover:underline"
-            >
-              ועוד {overdueDebts.length - 3} חובות נוספים
-            </button>
-          )}
-        </div>
+        <Card className="border-red-300 bg-red-50">
+          <CardHeader>
+            <CardTitle className="text-red-700">חובות ({overdueDebts.length})</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {overdueDebts.slice(0, 3).map((debt, idx) => (
+                <DebtRow
+                  key={`overdue-${debt.patientId}-${debt.sessionId || debt.month}-${idx}`}
+                  debt={debt}
+                  variant="danger"
+                />
+              ))}
+            </div>
+            {overdueDebts.length > 3 && (
+              <button
+                onClick={() => navigate('/payments')}
+                className="mt-3 text-sm text-red-700 hover:underline"
+              >
+                ועוד {overdueDebts.length - 3} חובות נוספים
+              </button>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* Pending monthly (YELLOW) */}
       {pendingDebts.length > 0 && (
-        <div className="border border-yellow-300 bg-yellow-50 rounded-lg p-5">
-          <h3 className="text-lg font-semibold mb-4 text-yellow-700">ממתינים ({pendingDebts.length})</h3>
-          <div className="space-y-2">
-            {pendingDebts.slice(0, 2).map((debt, idx) => (
-              <DebtRow
-                key={`pending-${debt.patientId}-${debt.month}-${idx}`}
-                debt={debt}
-                colorClass="yellow"
-              />
-            ))}
-          </div>
-          {pendingDebts.length > 2 && (
-            <button
-              onClick={() => navigate('/payments')}
-              className="mt-3 text-sm text-yellow-700 hover:underline"
-            >
-              ועוד {pendingDebts.length - 2} ממתינים נוספים
-            </button>
-          )}
-        </div>
+        <Card className="border-yellow-300 bg-yellow-50">
+          <CardHeader>
+            <CardTitle className="text-yellow-700">ממתינים ({pendingDebts.length})</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {pendingDebts.slice(0, 2).map((debt, idx) => (
+                <DebtRow
+                  key={`pending-${debt.patientId}-${debt.month}-${idx}`}
+                  debt={debt}
+                  variant="warning"
+                />
+              ))}
+            </div>
+            {pendingDebts.length > 2 && (
+              <button
+                onClick={() => navigate('/payments')}
+                className="mt-3 text-sm text-yellow-700 hover:underline"
+              >
+                ועוד {pendingDebts.length - 2} ממתינים נוספים
+              </button>
+            )}
+          </CardContent>
+        </Card>
       )}
     </div>
   )

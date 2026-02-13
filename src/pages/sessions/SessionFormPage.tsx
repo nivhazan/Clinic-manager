@@ -1,12 +1,23 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { toast } from 'sonner'
 import { useSession, useCreateSession, useUpdateSession } from '@/hooks/useSessions'
 import { usePatients } from '@/hooks/usePatients'
 import { usePatientAppointments } from '@/hooks/useAppointments'
 import { PROGRESS_LEVEL_LABELS, COOPERATION_LEVEL_LABELS } from '@/lib/constants'
-import { FormField } from '@/components/shared/FormField'
-import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
+import { PageHeader } from '@/components/layout'
+import {
+  Button,
+  Input,
+  Textarea,
+  FormField,
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  toast,
+} from '@/components/ui'
+import { NativeSelect } from '@/components/ui/Select'
+import { SkeletonCard } from '@/components/ui/Skeleton'
 import type { ProgressLevel, CooperationLevel } from '@/types'
 
 interface SessionFormData {
@@ -81,9 +92,15 @@ function validate(data: SessionFormData): FormErrors {
   return errors
 }
 
-const INPUT = 'h-10 px-3 rounded-md border border-input bg-background text-sm w-full'
-const TEXTAREA = 'px-3 py-2 rounded-md border border-input bg-background text-sm w-full min-h-[80px] resize-y'
-const SELECT = 'h-10 px-3 rounded-md border border-input bg-background text-sm w-full'
+const progressOptions = Object.entries(PROGRESS_LEVEL_LABELS).map(([value, label]) => ({
+  value,
+  label,
+}))
+
+const cooperationOptions = Object.entries(COOPERATION_LEVEL_LABELS).map(([value, label]) => ({
+  value,
+  label,
+}))
 
 export default function SessionFormPage() {
   const { id } = useParams()
@@ -98,7 +115,6 @@ export default function SessionFormPage() {
   const [form, setForm] = useState<SessionFormData>(EMPTY_FORM)
   const [errors, setErrors] = useState<FormErrors>({})
 
-  // Load patient appointments when patientId changes
   const { data: appointments = [] } = usePatientAppointments(form.patientId)
 
   useEffect(() => {
@@ -117,7 +133,9 @@ export default function SessionFormPage() {
     }
   }, [session, searchParams])
 
-  function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
+  function handleChange(
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+  ) {
     const { name, value } = e.target
     setForm(prev => ({ ...prev, [name]: value }))
     if (errors[name as keyof SessionFormData]) {
@@ -130,6 +148,7 @@ export default function SessionFormPage() {
     const validationErrors = validate(form)
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors)
+      toast.error({ title: 'יש לתקן את השדות המסומנים' })
       return
     }
 
@@ -140,230 +159,238 @@ export default function SessionFormPage() {
         { id: id!, data },
         {
           onSuccess: () => {
-            toast.success('הטיפול עודכן')
+            toast.success({ title: 'הטיפול עודכן' })
             navigate(`/patients/${data.patientId}`)
           },
-          onError: () => toast.error('שגיאה בעדכון הטיפול'),
-        },
+          onError: () => toast.error({ title: 'שגיאה בעדכון הטיפול' }),
+        }
       )
     } else {
       createMutation.mutate(data, {
         onSuccess: () => {
-          toast.success('הטיפול נוצר בהצלחה')
+          toast.success({ title: 'הטיפול נוצר בהצלחה' })
           navigate(`/patients/${data.patientId}`)
         },
-        onError: () => toast.error('שגיאה ביצירת הטיפול'),
+        onError: () => toast.error({ title: 'שגיאה ביצירת הטיפול' }),
       })
     }
   }
 
-  if ((isEdit && sessionLoading) || patientsLoading) return <LoadingSpinner />
+  if ((isEdit && sessionLoading) || patientsLoading) {
+    return (
+      <div>
+        <PageHeader title={isEdit ? 'עריכת טיפול' : 'טיפול חדש'} backTo="/sessions" />
+        <div className="space-y-6 max-w-4xl">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      </div>
+    )
+  }
 
   const isPending = createMutation.isPending || updateMutation.isPending
   const activePatients = patients.filter(p => p.status === 'active')
-
-  // Filter appointments to show only completed or confirmed ones
   const eligibleAppointments = appointments.filter(
-    a => a.status === 'completed' || a.status === 'confirmed',
+    a => a.status === 'completed' || a.status === 'confirmed'
   )
+
+  const patientOptions = [
+    { value: '', label: 'בחר מטופל' },
+    ...activePatients.map(p => ({ value: p.id, label: p.fullName })),
+  ]
+
+  const appointmentOptions = [
+    { value: '', label: 'ללא קישור לפגישה' },
+    ...eligibleAppointments.map(apt => ({
+      value: apt.id,
+      label: `${new Intl.DateTimeFormat('he-IL', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      }).format(new Date(apt.date))} - ${apt.time}`,
+    })),
+  ]
 
   return (
     <div>
-      <h2 className="text-2xl font-bold mb-6">{isEdit ? 'עריכת טיפול' : 'טיפול חדש'}</h2>
+      <PageHeader
+        title={isEdit ? 'עריכת טיפול' : 'טיפול חדש'}
+        backTo={isEdit && form.patientId ? `/patients/${form.patientId}` : '/sessions'}
+      />
 
       <form onSubmit={handleSubmit} className="space-y-6 max-w-4xl">
-        <fieldset className="space-y-6">
-          <div className="border border-border rounded-lg p-5">
-            <h3 className="text-base font-semibold mb-4">פרטים בסיסיים</h3>
+        {/* Basic Info */}
+        <Card>
+          <CardHeader>
+            <CardTitle>פרטים בסיסיים</CardTitle>
+          </CardHeader>
+          <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField label="מטופל" htmlFor="patientId" required error={errors.patientId}>
-                <select
+                <NativeSelect
                   id="patientId"
                   name="patientId"
                   value={form.patientId}
                   onChange={handleChange}
-                  className={SELECT}
+                  options={patientOptions}
                   disabled={isEdit}
-                >
-                  <option value="">בחר מטופל</option>
-                  {activePatients.map(patient => (
-                    <option key={patient.id} value={patient.id}>
-                      {patient.fullName}
-                    </option>
-                  ))}
-                </select>
+                  error={!!errors.patientId}
+                />
               </FormField>
 
-              <FormField label="תאריך טיפול" htmlFor="sessionDate" required error={errors.sessionDate}>
-                <input
+              <FormField
+                label="תאריך טיפול"
+                htmlFor="sessionDate"
+                required
+                error={errors.sessionDate}
+              >
+                <Input
                   id="sessionDate"
                   name="sessionDate"
                   type="date"
                   value={form.sessionDate}
                   onChange={handleChange}
-                  className={INPUT}
+                  error={!!errors.sessionDate}
                 />
               </FormField>
 
               <FormField label="פגישה מקושרת (אופציונלי)" htmlFor="appointmentId">
-                <select
+                <NativeSelect
                   id="appointmentId"
                   name="appointmentId"
                   value={form.appointmentId}
                   onChange={handleChange}
-                  className={SELECT}
+                  options={appointmentOptions}
                   disabled={!form.patientId}
-                >
-                  <option value="">ללא קישור לפגישה</option>
-                  {eligibleAppointments.map(apt => (
-                    <option key={apt.id} value={apt.id}>
-                      {new Intl.DateTimeFormat('he-IL', {
-                        day: '2-digit',
-                        month: '2-digit',
-                        year: 'numeric',
-                      }).format(new Date(apt.date))}{' '}
-                      - {apt.time}
-                    </option>
-                  ))}
-                </select>
-              </FormField>
-            </div>
-          </div>
-
-          <div className="border border-border rounded-lg p-5">
-            <h3 className="text-base font-semibold mb-4">תוכן הטיפול</h3>
-            <div className="space-y-4">
-              <FormField label="מטרות הטיפול" htmlFor="goals" required error={errors.goals}>
-                <textarea
-                  id="goals"
-                  name="goals"
-                  value={form.goals}
-                  onChange={handleChange}
-                  className={TEXTAREA}
-                  placeholder="תיאור המטרות שהוגדרו לטיפול זה..."
-                />
-              </FormField>
-
-              <FormField
-                label="פעילויות שבוצעו"
-                htmlFor="activitiesPerformed"
-                required
-                error={errors.activitiesPerformed}
-              >
-                <textarea
-                  id="activitiesPerformed"
-                  name="activitiesPerformed"
-                  value={form.activitiesPerformed}
-                  onChange={handleChange}
-                  className={TEXTAREA}
-                  placeholder="תיאור הפעילויות והתרגילים שבוצעו במהלך הטיפול..."
-                />
-              </FormField>
-
-              <FormField label="סיכום" htmlFor="summary" required error={errors.summary}>
-                <textarea
-                  id="summary"
-                  name="summary"
-                  value={form.summary}
-                  onChange={handleChange}
-                  className={TEXTAREA}
-                  placeholder="סיכום כללי של הטיפול..."
                 />
               </FormField>
             </div>
-          </div>
+          </CardContent>
+        </Card>
 
-          <div className="border border-border rounded-lg p-5">
-            <h3 className="text-base font-semibold mb-4">הערכה</h3>
+        {/* Session Content */}
+        <Card>
+          <CardHeader>
+            <CardTitle>תוכן הטיפול</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <FormField label="מטרות הטיפול" htmlFor="goals" required error={errors.goals}>
+              <Textarea
+                id="goals"
+                name="goals"
+                value={form.goals}
+                onChange={handleChange}
+                placeholder="תיאור המטרות שהוגדרו לטיפול זה..."
+                error={!!errors.goals}
+              />
+            </FormField>
+
+            <FormField
+              label="פעילויות שבוצעו"
+              htmlFor="activitiesPerformed"
+              required
+              error={errors.activitiesPerformed}
+            >
+              <Textarea
+                id="activitiesPerformed"
+                name="activitiesPerformed"
+                value={form.activitiesPerformed}
+                onChange={handleChange}
+                placeholder="תיאור הפעילויות והתרגילים שבוצעו במהלך הטיפול..."
+                error={!!errors.activitiesPerformed}
+              />
+            </FormField>
+
+            <FormField label="סיכום" htmlFor="summary" required error={errors.summary}>
+              <Textarea
+                id="summary"
+                name="summary"
+                value={form.summary}
+                onChange={handleChange}
+                placeholder="סיכום כללי של הטיפול..."
+                error={!!errors.summary}
+              />
+            </FormField>
+          </CardContent>
+        </Card>
+
+        {/* Assessment */}
+        <Card>
+          <CardHeader>
+            <CardTitle>הערכה</CardTitle>
+          </CardHeader>
+          <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField label="רמת התקדמות" htmlFor="progressLevel" required>
-                <select
+                <NativeSelect
                   id="progressLevel"
                   name="progressLevel"
                   value={form.progressLevel}
                   onChange={handleChange}
-                  className={SELECT}
-                >
-                  {Object.entries(PROGRESS_LEVEL_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
+                  options={progressOptions}
+                />
               </FormField>
 
               <FormField label="רמת שיתוף פעולה" htmlFor="cooperationLevel" required>
-                <select
+                <NativeSelect
                   id="cooperationLevel"
                   name="cooperationLevel"
                   value={form.cooperationLevel}
                   onChange={handleChange}
-                  className={SELECT}
-                >
-                  {Object.entries(COOPERATION_LEVEL_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </FormField>
-            </div>
-          </div>
-
-          <div className="border border-border rounded-lg p-5">
-            <h3 className="text-base font-semibold mb-4">מידע נוסף (אופציונלי)</h3>
-            <div className="space-y-4">
-              <FormField label="משימות בית" htmlFor="homeAssignments">
-                <textarea
-                  id="homeAssignments"
-                  name="homeAssignments"
-                  value={form.homeAssignments}
-                  onChange={handleChange}
-                  className={TEXTAREA}
-                  placeholder="תרגילים או משימות לביצוע בבית..."
-                />
-              </FormField>
-
-              <FormField label="תכנון לטיפול הבא" htmlFor="nextSessionPlan">
-                <textarea
-                  id="nextSessionPlan"
-                  name="nextSessionPlan"
-                  value={form.nextSessionPlan}
-                  onChange={handleChange}
-                  className={TEXTAREA}
-                  placeholder="מה מתוכנן לטיפול הבא..."
-                />
-              </FormField>
-
-              <FormField label="המלצות" htmlFor="recommendations">
-                <textarea
-                  id="recommendations"
-                  name="recommendations"
-                  value={form.recommendations}
-                  onChange={handleChange}
-                  className={TEXTAREA}
-                  placeholder="המלצות כלליות או הפניות נוספות..."
+                  options={cooperationOptions}
                 />
               </FormField>
             </div>
-          </div>
-        </fieldset>
+          </CardContent>
+        </Card>
 
+        {/* Additional Info */}
+        <Card>
+          <CardHeader>
+            <CardTitle>מידע נוסף (אופציונלי)</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <FormField label="משימות בית" htmlFor="homeAssignments">
+              <Textarea
+                id="homeAssignments"
+                name="homeAssignments"
+                value={form.homeAssignments}
+                onChange={handleChange}
+                placeholder="תרגילים או משימות לביצוע בבית..."
+              />
+            </FormField>
+
+            <FormField label="תכנון לטיפול הבא" htmlFor="nextSessionPlan">
+              <Textarea
+                id="nextSessionPlan"
+                name="nextSessionPlan"
+                value={form.nextSessionPlan}
+                onChange={handleChange}
+                placeholder="מה מתוכנן לטיפול הבא..."
+              />
+            </FormField>
+
+            <FormField label="המלצות" htmlFor="recommendations">
+              <Textarea
+                id="recommendations"
+                name="recommendations"
+                value={form.recommendations}
+                onChange={handleChange}
+                placeholder="המלצות כלליות או הפניות נוספות..."
+              />
+            </FormField>
+          </CardContent>
+        </Card>
+
+        {/* Actions */}
         <div className="flex items-center gap-3 pt-4 border-t border-border">
-          <button
-            type="submit"
-            disabled={isPending}
-            className="h-10 px-6 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
-          >
+          <Button type="submit" loading={isPending}>
             {isPending ? 'שומר...' : 'שמירה'}
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="h-10 px-6 rounded-md border border-input bg-background text-sm font-medium hover:bg-muted transition-colors"
-          >
+          </Button>
+          <Button type="button" variant="secondary" onClick={() => navigate(-1)}>
             ביטול
-          </button>
+          </Button>
         </div>
       </form>
     </div>

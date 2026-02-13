@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
 import { usePatient, useCreatePatient, useUpdatePatient } from '@/hooks/usePatients'
 import { ensureRecurringAppointmentsForPatient } from '@/services/recurring'
 import {
@@ -9,8 +8,20 @@ import {
   PAYMENT_FREQUENCY_LABELS,
   DAY_LABELS,
 } from '@/lib/constants'
-import { FormField } from '@/components/shared/FormField'
-import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
+import { PageHeader } from '@/components/layout'
+import {
+  Button,
+  Input,
+  Textarea,
+  FormField,
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  toast,
+} from '@/components/ui'
+import { NativeSelect } from '@/components/ui/Select'
+import { SkeletonCard } from '@/components/ui/Skeleton'
 import type { Patient, PatientStatus, PaymentFrequency } from '@/types'
 
 interface PatientFormData {
@@ -120,9 +131,20 @@ function validate(data: PatientFormData): FormErrors {
   return errors
 }
 
-const INPUT = 'h-10 px-3 rounded-md border border-input bg-background text-sm w-full'
-const TEXTAREA = 'px-3 py-2 rounded-md border border-input bg-background text-sm w-full min-h-[80px] resize-y'
-const SELECT = 'h-10 px-3 rounded-md border border-input bg-background text-sm w-full'
+const statusOptions = Object.entries(PATIENT_STATUS_LABELS).map(([value, label]) => ({
+  value,
+  label,
+}))
+
+const frequencyOptions = Object.entries(PAYMENT_FREQUENCY_LABELS).map(([value, label]) => ({
+  value,
+  label,
+}))
+
+const dayOptions = [
+  { value: '', label: 'ללא' },
+  ...Object.entries(DAY_LABELS).map(([value, label]) => ({ value, label })),
+]
 
 export default function PatientFormPage() {
   const { id } = useParams()
@@ -140,7 +162,9 @@ export default function PatientFormPage() {
     if (patient) setForm(toFormData(patient))
   }, [patient])
 
-  function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
+  function handleChange(
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+  ) {
     const { name, value } = e.target
     setForm(prev => ({ ...prev, [name]: value }))
     if (errors[name as keyof PatientFormData]) {
@@ -153,6 +177,7 @@ export default function PatientFormPage() {
     const validationErrors = validate(form)
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors)
+      toast.error({ title: 'יש לתקן את השדות המסומנים' })
       return
     }
 
@@ -167,157 +192,302 @@ export default function PatientFormPage() {
             if (count > 0) {
               queryClient.invalidateQueries({ queryKey: ['appointments'] })
             }
-            toast.success('פרטי המטופל עודכנו')
+            toast.success({ title: 'פרטי המטופל עודכנו' })
             navigate(`/patients/${id}`)
           },
-          onError: () => toast.error('שגיאה בעדכון המטופל'),
-        },
+          onError: () => toast.error({ title: 'שגיאה בעדכון המטופל' }),
+        }
       )
     } else {
       createMutation.mutate(data, {
-        onSuccess: (created) => {
+        onSuccess: created => {
           const count = ensureRecurringAppointmentsForPatient(created.id)
           if (count > 0) {
             queryClient.invalidateQueries({ queryKey: ['appointments'] })
           }
-          toast.success('המטופל נוסף בהצלחה')
+          toast.success({ title: 'המטופל נוסף בהצלחה' })
           navigate(`/patients/${created.id}`)
         },
-        onError: () => toast.error('שגיאה בהוספת המטופל'),
+        onError: () => toast.error({ title: 'שגיאה בהוספת המטופל' }),
       })
     }
   }
 
-  if (isEdit && isLoading) return <LoadingSpinner />
+  if (isEdit && isLoading) {
+    return (
+      <div>
+        <PageHeader title="עריכת מטופל" backTo="/patients" />
+        <div className="space-y-6 max-w-3xl">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      </div>
+    )
+  }
 
   const isPending = createMutation.isPending || updateMutation.isPending
 
   return (
     <div>
-      <h2 className="text-2xl font-bold mb-6">{isEdit ? 'עריכת מטופל' : 'מטופל חדש'}</h2>
+      <PageHeader
+        title={isEdit ? 'עריכת מטופל' : 'מטופל חדש'}
+        backTo={isEdit ? `/patients/${id}` : '/patients'}
+      />
 
-      <form onSubmit={handleSubmit} className="space-y-8 max-w-3xl">
+      <form onSubmit={handleSubmit} className="space-y-6 max-w-3xl">
         {/* Personal Info */}
-        <fieldset className="space-y-4">
-          <legend className="text-lg font-semibold mb-2">פרטים אישיים</legend>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FormField label="שם מלא" htmlFor="fullName" required error={errors.fullName}>
-              <input id="fullName" name="fullName" value={form.fullName} onChange={handleChange} className={INPUT} />
-            </FormField>
-            <FormField label="מספר זהות" htmlFor="idNumber" required error={errors.idNumber}>
-              <input id="idNumber" name="idNumber" value={form.idNumber} onChange={handleChange} className={INPUT} />
-            </FormField>
-            <FormField label="תאריך לידה" htmlFor="dateOfBirth" required error={errors.dateOfBirth}>
-              <input id="dateOfBirth" name="dateOfBirth" type="date" value={form.dateOfBirth} onChange={handleChange} className={INPUT} />
-            </FormField>
-            <FormField label="טלפון" htmlFor="phone" required error={errors.phone}>
-              <input id="phone" name="phone" type="tel" dir="ltr" value={form.phone} onChange={handleChange} className={INPUT} />
-            </FormField>
-            <FormField label="טלפון הורה" htmlFor="parentPhone">
-              <input id="parentPhone" name="parentPhone" type="tel" dir="ltr" value={form.parentPhone} onChange={handleChange} className={INPUT} />
-            </FormField>
-            <FormField label="אימייל" htmlFor="email">
-              <input id="email" name="email" type="email" dir="ltr" value={form.email} onChange={handleChange} className={INPUT} />
-            </FormField>
-            <FormField label="כתובת" htmlFor="address">
-              <input id="address" name="address" value={form.address} onChange={handleChange} className={INPUT} />
-            </FormField>
-          </div>
-        </fieldset>
+        <Card>
+          <CardHeader>
+            <CardTitle>פרטים אישיים</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField label="שם מלא" htmlFor="fullName" required error={errors.fullName}>
+                <Input
+                  id="fullName"
+                  name="fullName"
+                  value={form.fullName}
+                  onChange={handleChange}
+                  error={!!errors.fullName}
+                />
+              </FormField>
+              <FormField label="מספר זהות" htmlFor="idNumber" required error={errors.idNumber}>
+                <Input
+                  id="idNumber"
+                  name="idNumber"
+                  value={form.idNumber}
+                  onChange={handleChange}
+                  error={!!errors.idNumber}
+                />
+              </FormField>
+              <FormField label="תאריך לידה" htmlFor="dateOfBirth" required error={errors.dateOfBirth}>
+                <Input
+                  id="dateOfBirth"
+                  name="dateOfBirth"
+                  type="date"
+                  value={form.dateOfBirth}
+                  onChange={handleChange}
+                  error={!!errors.dateOfBirth}
+                />
+              </FormField>
+              <FormField label="טלפון" htmlFor="phone" required error={errors.phone}>
+                <Input
+                  id="phone"
+                  name="phone"
+                  type="tel"
+                  dir="ltr"
+                  value={form.phone}
+                  onChange={handleChange}
+                  error={!!errors.phone}
+                />
+              </FormField>
+              <FormField label="טלפון הורה" htmlFor="parentPhone">
+                <Input
+                  id="parentPhone"
+                  name="parentPhone"
+                  type="tel"
+                  dir="ltr"
+                  value={form.parentPhone}
+                  onChange={handleChange}
+                />
+              </FormField>
+              <FormField label="אימייל" htmlFor="email">
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  dir="ltr"
+                  value={form.email}
+                  onChange={handleChange}
+                />
+              </FormField>
+              <FormField label="כתובת" htmlFor="address" className="md:col-span-2">
+                <Input
+                  id="address"
+                  name="address"
+                  value={form.address}
+                  onChange={handleChange}
+                />
+              </FormField>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Medical Info */}
-        <fieldset className="space-y-4">
-          <legend className="text-lg font-semibold mb-2">מידע רפואי</legend>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FormField label="אבחנה ראשונית" htmlFor="initialDiagnosis">
-              <textarea id="initialDiagnosis" name="initialDiagnosis" value={form.initialDiagnosis} onChange={handleChange} className={TEXTAREA} />
-            </FormField>
-            <FormField label="רקע רפואי" htmlFor="medicalBackground">
-              <textarea id="medicalBackground" name="medicalBackground" value={form.medicalBackground} onChange={handleChange} className={TEXTAREA} />
-            </FormField>
-            <FormField label="מקור הפניה" htmlFor="referralSource">
-              <input id="referralSource" name="referralSource" value={form.referralSource} onChange={handleChange} className={INPUT} />
-            </FormField>
-            <FormField label="איש קשר לחירום" htmlFor="emergencyContact">
-              <input id="emergencyContact" name="emergencyContact" value={form.emergencyContact} onChange={handleChange} className={INPUT} />
-            </FormField>
-            <FormField label="טלפון חירום" htmlFor="emergencyPhone">
-              <input id="emergencyPhone" name="emergencyPhone" type="tel" dir="ltr" value={form.emergencyPhone} onChange={handleChange} className={INPUT} />
-            </FormField>
-          </div>
-        </fieldset>
+        <Card>
+          <CardHeader>
+            <CardTitle>מידע רפואי</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField label="אבחנה ראשונית" htmlFor="initialDiagnosis">
+                <Textarea
+                  id="initialDiagnosis"
+                  name="initialDiagnosis"
+                  value={form.initialDiagnosis}
+                  onChange={handleChange}
+                />
+              </FormField>
+              <FormField label="רקע רפואי" htmlFor="medicalBackground">
+                <Textarea
+                  id="medicalBackground"
+                  name="medicalBackground"
+                  value={form.medicalBackground}
+                  onChange={handleChange}
+                />
+              </FormField>
+              <FormField label="מקור הפניה" htmlFor="referralSource">
+                <Input
+                  id="referralSource"
+                  name="referralSource"
+                  value={form.referralSource}
+                  onChange={handleChange}
+                />
+              </FormField>
+              <FormField label="איש קשר לחירום" htmlFor="emergencyContact">
+                <Input
+                  id="emergencyContact"
+                  name="emergencyContact"
+                  value={form.emergencyContact}
+                  onChange={handleChange}
+                />
+              </FormField>
+              <FormField label="טלפון חירום" htmlFor="emergencyPhone">
+                <Input
+                  id="emergencyPhone"
+                  name="emergencyPhone"
+                  type="tel"
+                  dir="ltr"
+                  value={form.emergencyPhone}
+                  onChange={handleChange}
+                />
+              </FormField>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Status & Payment */}
-        <fieldset className="space-y-4">
-          <legend className="text-lg font-semibold mb-2">סטטוס ותשלום</legend>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FormField label="סטטוס" htmlFor="status">
-              <select id="status" name="status" value={form.status} onChange={handleChange} className={SELECT}>
-                {Object.entries(PATIENT_STATUS_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </FormField>
-            <FormField label="תדירות תשלום" htmlFor="paymentFrequency">
-              <select id="paymentFrequency" name="paymentFrequency" value={form.paymentFrequency} onChange={handleChange} className={SELECT}>
-                {Object.entries(PAYMENT_FREQUENCY_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </FormField>
-            <FormField label="מחיר טיפול (₪)" htmlFor="sessionPrice" required error={errors.sessionPrice}>
-              <input id="sessionPrice" name="sessionPrice" type="number" min="0" dir="ltr" value={form.sessionPrice} onChange={handleChange} className={INPUT} />
-            </FormField>
-            {form.paymentFrequency === 'monthly' && (
-              <FormField label="מחיר חודשי (₪)" htmlFor="monthlyPrice" required error={errors.monthlyPrice}>
-                <input id="monthlyPrice" name="monthlyPrice" type="number" min="0" dir="ltr" value={form.monthlyPrice} onChange={handleChange} className={INPUT} />
+        <Card>
+          <CardHeader>
+            <CardTitle>סטטוס ותשלום</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField label="סטטוס" htmlFor="status">
+                <NativeSelect
+                  id="status"
+                  name="status"
+                  value={form.status}
+                  onChange={handleChange}
+                  options={statusOptions}
+                />
               </FormField>
-            )}
-          </div>
-        </fieldset>
+              <FormField label="תדירות תשלום" htmlFor="paymentFrequency">
+                <NativeSelect
+                  id="paymentFrequency"
+                  name="paymentFrequency"
+                  value={form.paymentFrequency}
+                  onChange={handleChange}
+                  options={frequencyOptions}
+                />
+              </FormField>
+              <FormField
+                label="מחיר טיפול (₪)"
+                htmlFor="sessionPrice"
+                required
+                error={errors.sessionPrice}
+              >
+                <Input
+                  id="sessionPrice"
+                  name="sessionPrice"
+                  type="number"
+                  min="0"
+                  dir="ltr"
+                  value={form.sessionPrice}
+                  onChange={handleChange}
+                  error={!!errors.sessionPrice}
+                />
+              </FormField>
+              {form.paymentFrequency === 'monthly' && (
+                <FormField
+                  label="מחיר חודשי (₪)"
+                  htmlFor="monthlyPrice"
+                  required
+                  error={errors.monthlyPrice}
+                >
+                  <Input
+                    id="monthlyPrice"
+                    name="monthlyPrice"
+                    type="number"
+                    min="0"
+                    dir="ltr"
+                    value={form.monthlyPrice}
+                    onChange={handleChange}
+                    error={!!errors.monthlyPrice}
+                  />
+                </FormField>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Recurring Appointments */}
-        <fieldset className="space-y-4">
-          <legend className="text-lg font-semibold mb-2">פגישות קבועות</legend>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FormField label="יום קבוע" htmlFor="recurringDay">
-              <select id="recurringDay" name="recurringDay" value={form.recurringDay} onChange={handleChange} className={SELECT}>
-                <option value="">ללא</option>
-                {Object.entries(DAY_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </FormField>
-            <FormField label="שעה קבועה" htmlFor="recurringTime">
-              <input id="recurringTime" name="recurringTime" type="time" dir="ltr" value={form.recurringTime} onChange={handleChange} className={INPUT} />
-            </FormField>
-          </div>
-        </fieldset>
+        <Card>
+          <CardHeader>
+            <CardTitle>פגישות קבועות</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField label="יום קבוע" htmlFor="recurringDay">
+                <NativeSelect
+                  id="recurringDay"
+                  name="recurringDay"
+                  value={form.recurringDay}
+                  onChange={handleChange}
+                  options={dayOptions}
+                />
+              </FormField>
+              <FormField label="שעה קבועה" htmlFor="recurringTime">
+                <Input
+                  id="recurringTime"
+                  name="recurringTime"
+                  type="time"
+                  dir="ltr"
+                  value={form.recurringTime}
+                  onChange={handleChange}
+                />
+              </FormField>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Notes */}
-        <fieldset className="space-y-4">
-          <legend className="text-lg font-semibold mb-2">הערות</legend>
-          <FormField label="הערות כלליות" htmlFor="notes">
-            <textarea id="notes" name="notes" value={form.notes} onChange={handleChange} className={TEXTAREA} />
-          </FormField>
-        </fieldset>
+        <Card>
+          <CardHeader>
+            <CardTitle>הערות</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <FormField label="הערות כלליות" htmlFor="notes">
+              <Textarea
+                id="notes"
+                name="notes"
+                value={form.notes}
+                onChange={handleChange}
+                className="min-h-[100px]"
+              />
+            </FormField>
+          </CardContent>
+        </Card>
 
         {/* Actions */}
         <div className="flex items-center gap-3 pt-4 border-t border-border">
-          <button
-            type="submit"
-            disabled={isPending}
-            className="h-10 px-6 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
-          >
+          <Button type="submit" loading={isPending}>
             {isPending ? 'שומר...' : 'שמירה'}
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="h-10 px-6 rounded-md border border-input bg-background text-sm font-medium hover:bg-muted transition-colors"
-          >
+          </Button>
+          <Button type="button" variant="secondary" onClick={() => navigate(-1)}>
             ביטול
-          </button>
+          </Button>
         </div>
       </form>
     </div>

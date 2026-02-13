@@ -3,21 +3,22 @@ import { useNavigate } from 'react-router-dom'
 import { DollarSign } from 'lucide-react'
 import type { Appointment, Patient } from '@/types'
 import { APPOINTMENT_STATUS_LABELS } from '@/lib/constants'
-import { cn } from '@/lib/utils'
 import { formatYMDLocal } from '@/lib/dates'
+import { Card, CardHeader, CardTitle, CardContent, Badge, Button } from '@/components/ui'
 import { EmptyState } from '@/components/shared/EmptyState'
+import { cn } from '@/lib/utils'
 
 interface UpcomingAppointmentsProps {
   appointments: Appointment[]
   patients: Patient[]
 }
 
-const statusColors = {
-  scheduled: 'bg-blue-100 text-blue-700',
-  confirmed: 'bg-green-100 text-green-700',
-  completed: 'bg-gray-100 text-gray-700',
-  canceled: 'bg-red-100 text-red-700',
-  no_show: 'bg-orange-100 text-orange-700',
+const statusVariant: Record<string, 'info' | 'success' | 'neutral' | 'danger' | 'warning'> = {
+  scheduled: 'info',
+  confirmed: 'success',
+  completed: 'neutral',
+  canceled: 'danger',
+  no_show: 'warning',
 }
 
 const DAY_NAMES = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת']
@@ -32,7 +33,6 @@ export function UpcomingAppointments({ appointments, patients }: UpcomingAppoint
   const navigate = useNavigate()
   const patientMap = useMemo(() => new Map(patients.map(p => [p.id, p])), [patients])
 
-  // Get today and tomorrow for labeling
   const today = useMemo(() => {
     const d = new Date()
     d.setHours(0, 0, 0, 0)
@@ -44,10 +44,8 @@ export function UpcomingAppointments({ appointments, patients }: UpcomingAppoint
   tomorrow.setDate(tomorrow.getDate() + 1)
   const tomorrowStr = formatYMDLocal(tomorrow)
 
-  // Group appointments by day (limit to next 10 appointments)
   const dayGroups = useMemo(() => {
     const limited = appointments.slice(0, 10)
-    const groups: DayGroup[] = []
     const groupMap = new Map<string, Appointment[]>()
 
     limited.forEach(apt => {
@@ -59,12 +57,11 @@ export function UpcomingAppointments({ appointments, patients }: UpcomingAppoint
       }
     })
 
-    // Convert map to sorted array with labels
     const sortedDates = Array.from(groupMap.keys()).sort()
+    const groups: DayGroup[] = []
 
     sortedDates.forEach(dateStr => {
       const appts = groupMap.get(dateStr)!
-      // Sort by time within each day
       appts.sort((a, b) => a.time.localeCompare(b.time))
 
       let label: string
@@ -91,17 +88,23 @@ export function UpcomingAppointments({ appointments, patients }: UpcomingAppoint
 
   if (appointments.length === 0) {
     return (
-      <div className="border border-border rounded-lg p-5">
-        <h3 className="text-lg font-semibold mb-4">פגישות קרובות</h3>
-        <EmptyState message="אין פגישות קרובות" />
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>פגישות קרובות</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <EmptyState message="אין פגישות קרובות" />
+        </CardContent>
+      </Card>
     )
   }
 
   function handleMarkPaid(appointment: Appointment) {
     const patient = patientMap.get(appointment.patientId)
     const amount = patient?.sessionPrice || ''
-    navigate(`/payments/new?patientId=${appointment.patientId}&appointmentId=${appointment.id}&amount=${amount}&date=${appointment.date}`)
+    navigate(
+      `/payments/new?patientId=${appointment.patientId}&appointmentId=${appointment.id}&amount=${amount}&date=${appointment.date}`
+    )
   }
 
   function handleRowClick(appointment: Appointment) {
@@ -109,73 +112,85 @@ export function UpcomingAppointments({ appointments, patients }: UpcomingAppoint
   }
 
   return (
-    <div className="border border-border rounded-lg p-5">
-      <h3 className="text-lg font-semibold mb-4">פגישות קרובות</h3>
-      <div className="space-y-4">
-        {dayGroups.map(group => (
-          <div key={group.dateStr}>
-            {/* Day header */}
-            <div className={cn(
-              'text-sm font-semibold mb-2 px-2 py-1 rounded',
-              group.dateStr === todayStr && 'bg-primary/10 text-primary',
-              group.dateStr === tomorrowStr && 'bg-blue-50 text-blue-700',
-              group.dateStr !== todayStr && group.dateStr !== tomorrowStr && 'text-muted-foreground'
-            )}>
-              {group.label}
-            </div>
+    <Card>
+      <CardHeader>
+        <CardTitle>פגישות קרובות</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          {dayGroups.map(group => (
+            <div key={group.dateStr}>
+              {/* Day header */}
+              <div
+                className={cn(
+                  'text-sm font-semibold mb-2 px-2 py-1 rounded',
+                  group.dateStr === todayStr && 'bg-primary/10 text-primary',
+                  group.dateStr === tomorrowStr && 'bg-blue-50 text-blue-700',
+                  group.dateStr !== todayStr &&
+                    group.dateStr !== tomorrowStr &&
+                    'text-muted-foreground'
+                )}
+              >
+                {group.label}
+              </div>
 
-            {/* Appointments for this day */}
-            <div className="space-y-2">
-              {group.appointments.map(apt => {
-                const patient = patientMap.get(apt.patientId)
-                const canMarkPaid = !apt.isPaid && (apt.status === 'completed' || apt.status === 'confirmed')
+              {/* Appointments for this day */}
+              <div className="space-y-2">
+                {group.appointments.map(apt => {
+                  const patient = patientMap.get(apt.patientId)
+                  const canMarkPaid =
+                    !apt.isPaid && (apt.status === 'completed' || apt.status === 'confirmed')
 
-                return (
-                  <div
-                    key={apt.id}
-                    onClick={() => handleRowClick(apt)}
-                    className="flex items-center gap-3 p-3 border border-border rounded-md hover:bg-muted/30 transition-colors cursor-pointer"
-                  >
-                    {/* Time */}
-                    <div className="w-14 text-center">
-                      <div className="text-sm font-semibold" dir="ltr">{apt.time}</div>
-                    </div>
-
-                    {/* Patient and status */}
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm truncate">
-                        {patient?.fullName || 'לא ידוע'}
+                  return (
+                    <div
+                      key={apt.id}
+                      onClick={() => handleRowClick(apt)}
+                      className="flex items-center gap-3 p-3 border border-border rounded-md hover:bg-muted/30 transition-colors cursor-pointer"
+                    >
+                      {/* Time */}
+                      <div className="w-14 text-center">
+                        <div className="text-sm font-semibold" dir="ltr">
+                          {apt.time}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className={cn('px-2 py-0.5 rounded-full text-xs font-medium', statusColors[apt.status])}>
-                          {APPOINTMENT_STATUS_LABELS[apt.status]}
-                        </span>
-                        {apt.isPaid && (
-                          <span className="text-xs text-green-600 font-medium">✓ שולם</span>
-                        )}
-                      </div>
-                    </div>
 
-                    {/* Quick action - payment */}
-                    {canMarkPaid && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleMarkPaid(apt)
-                        }}
-                        className="p-2 rounded-md bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
-                        title="צור תשלום"
-                      >
-                        <DollarSign className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                )
-              })}
+                      {/* Patient and status */}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm truncate">
+                          {patient?.fullName || 'לא ידוע'}
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <Badge variant={statusVariant[apt.status]} size="sm">
+                            {APPOINTMENT_STATUS_LABELS[apt.status]}
+                          </Badge>
+                          {apt.isPaid && (
+                            <span className="text-xs text-green-600 font-medium">✓ שולם</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Quick action - payment */}
+                      {canMarkPaid && (
+                        <Button
+                          variant="success"
+                          size="icon"
+                          onClick={e => {
+                            e.stopPropagation()
+                            handleMarkPaid(apt)
+                          }}
+                          title="צור תשלום"
+                        >
+                          <DollarSign className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
-    </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
