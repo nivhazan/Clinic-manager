@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Eye, Pencil, Trash2 } from 'lucide-react'
 import { usePatients, useDeletePatient } from '@/hooks/usePatients'
+import { useDocumentsByOwner } from '@/hooks/useDocuments'
 import { PATIENT_STATUS_LABELS } from '@/lib/constants'
 import { PageHeader, FilterBar } from '@/components/layout'
 import {
@@ -41,6 +42,7 @@ export default function PatientsPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [deleteTarget, setDeleteTarget] = useState<Patient | null>(null)
+  const { data: deleteTargetDocs = [] } = useDocumentsByOwner('patient', deleteTarget?.id ?? '')
 
   const filtered = patients.filter(p => {
     const term = search.trim().toLowerCase()
@@ -180,7 +182,12 @@ export default function PatientsPage() {
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDelete}
         title="מחיקת מטופל"
-        message={`האם למחוק את המטופל "${deleteTarget?.fullName}"? פעולה זו בלתי הפיכה.`}
+        message={
+          `האם למחוק את המטופל "${deleteTarget?.fullName}"? פעולה זו בלתי הפיכה.` +
+          (deleteTargetDocs.length > 0
+            ? `\nלמטופל זה ${deleteTargetDocs.length} מסמכים מצורפים. המסמכים לא יימחקו.`
+            : '')
+        }
         confirmText="מחק"
         cancelText="ביטול"
         variant="danger"

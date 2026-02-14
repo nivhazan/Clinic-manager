@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ArrowRight, Pencil, Trash2, Plus } from 'lucide-react'
-import { toast } from 'sonner'
 import { usePatient, useDeletePatient } from '@/hooks/usePatients'
 import { usePatientAppointments, useDeleteAppointment } from '@/hooks/useAppointments'
 import { usePatientSessions, useDeleteSession } from '@/hooks/useSessions'
+import { useDocumentsByOwner } from '@/hooks/useDocuments'
 import {
   PATIENT_STATUS_LABELS,
   PAYMENT_FREQUENCY_LABELS,
@@ -14,6 +14,7 @@ import {
   PROGRESS_LEVEL_LABELS,
   COOPERATION_LEVEL_LABELS,
 } from '@/lib/constants'
+import { Button, ConfirmDialog, toast } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { EmptyState } from '@/components/shared/EmptyState'
@@ -107,14 +108,17 @@ function DetailsTab({ patient }: { patient: Patient }) {
 function AppointmentsTab({ patientId }: { patientId: string }) {
   const { data: appointments = [], isLoading } = usePatientAppointments(patientId)
   const deleteMutation = useDeleteAppointment()
+  const [deleteTarget, setDeleteTarget] = useState<Appointment | null>(null)
 
-  function handleDelete(appointment: Appointment) {
-    if (confirm(`האם למחוק את הפגישה מתאריך ${appointment.date}?`)) {
-      deleteMutation.mutate(appointment.id, {
-        onSuccess: () => toast.success('הפגישה נמחקה'),
-        onError: () => toast.error('שגיאה במחיקת הפגישה'),
-      })
-    }
+  function handleDelete() {
+    if (!deleteTarget) return
+    deleteMutation.mutate(deleteTarget.id, {
+      onSuccess: () => {
+        toast.success({ title: 'הפגישה נמחקה' })
+        setDeleteTarget(null)
+      },
+      onError: () => toast.error({ title: 'שגיאה במחיקת הפגישה' }),
+    })
   }
 
   if (isLoading) return <LoadingSpinner />
@@ -128,13 +132,12 @@ function AppointmentsTab({ patientId }: { patientId: string }) {
     <div>
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold">רשימת פגישות</h3>
-        <Link
-          to={`/calendar/new?patientId=${patientId}`}
-          className="flex items-center gap-2 h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+        <Button
+          leftIcon={<Plus className="h-4 w-4" />}
+          onClick={() => window.location.href = `/calendar/new?patientId=${patientId}`}
         >
-          <Plus className="h-4 w-4" />
           פגישה חדשה
-        </Link>
+        </Button>
       </div>
 
       {sortedAppointments.length === 0 ? (
@@ -177,19 +180,33 @@ function AppointmentsTab({ patientId }: { patientId: string }) {
                   >
                     <Pencil className="h-4 w-4" />
                   </Link>
-                  <button
-                    onClick={() => handleDelete(apt)}
-                    className="p-1.5 rounded-md hover:bg-destructive/10 text-destructive transition-colors"
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-destructive hover:bg-destructive/10"
+                    onClick={() => setDeleteTarget(apt)}
                     title="מחיקה"
                   >
                     <Trash2 className="h-4 w-4" />
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title="מחיקת פגישה"
+        message={`האם למחוק את הפגישה מתאריך ${deleteTarget?.date ?? ''}?`}
+        confirmText="מחק"
+        cancelText="ביטול"
+        variant="danger"
+        loading={deleteMutation.isPending}
+      />
     </div>
   )
 }
@@ -205,14 +222,17 @@ const progressColors: Record<ProgressLevel, string> = {
 function SessionsTab({ patientId }: { patientId: string }) {
   const { data: sessions = [], isLoading } = usePatientSessions(patientId)
   const deleteMutation = useDeleteSession()
+  const [deleteTarget, setDeleteTarget] = useState<TherapySession | null>(null)
 
-  function handleDelete(session: TherapySession) {
-    if (confirm(`האם למחוק טיפול מס' ${session.sessionNumber}?`)) {
-      deleteMutation.mutate(session.id, {
-        onSuccess: () => toast.success('הטיפול נמחק'),
-        onError: () => toast.error('שגיאה במחיקת הטיפול'),
-      })
-    }
+  function handleDelete() {
+    if (!deleteTarget) return
+    deleteMutation.mutate(deleteTarget.id, {
+      onSuccess: () => {
+        toast.success({ title: 'הטיפול נמחק' })
+        setDeleteTarget(null)
+      },
+      onError: () => toast.error({ title: 'שגיאה במחיקת הטיפול' }),
+    })
   }
 
   if (isLoading) return <LoadingSpinner />
@@ -223,13 +243,12 @@ function SessionsTab({ patientId }: { patientId: string }) {
     <div>
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold">רשימת טיפולים</h3>
-        <Link
-          to={`/sessions/new?patientId=${patientId}`}
-          className="flex items-center gap-2 h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+        <Button
+          leftIcon={<Plus className="h-4 w-4" />}
+          onClick={() => window.location.href = `/sessions/new?patientId=${patientId}`}
         >
-          <Plus className="h-4 w-4" />
           טיפול חדש
-        </Link>
+        </Button>
       </div>
 
       {sortedSessions.length === 0 ? (
@@ -286,18 +305,32 @@ function SessionsTab({ patientId }: { patientId: string }) {
                 >
                   <Pencil className="h-4 w-4" />
                 </Link>
-                <button
-                  onClick={() => handleDelete(session)}
-                  className="p-1.5 rounded-md hover:bg-destructive/10 text-destructive transition-colors"
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-destructive hover:bg-destructive/10"
+                  onClick={() => setDeleteTarget(session)}
                   title="מחיקה"
                 >
                   <Trash2 className="h-4 w-4" />
-                </button>
+                </Button>
               </div>
             </div>
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title="מחיקת טיפול"
+        message={`האם למחוק טיפול מס' ${deleteTarget?.sessionNumber ?? ''}?`}
+        confirmText="מחק"
+        cancelText="ביטול"
+        variant="danger"
+        loading={deleteMutation.isPending}
+      />
     </div>
   )
 }
@@ -308,53 +341,54 @@ export default function PatientProfilePage() {
   const { data: patient, isLoading } = usePatient(id!)
   const deleteMutation = useDeletePatient()
   const [activeTab, setActiveTab] = useState<string>('details')
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const { data: patientDocs = [] } = useDocumentsByOwner('patient', id ?? '')
 
   if (isLoading) return <LoadingSpinner />
   if (!patient) return <EmptyState message="המטופל לא נמצא" />
 
   function handleDelete() {
-    if (confirm(`האם למחוק את המטופל "${patient!.fullName}"?`)) {
-      deleteMutation.mutate(patient!.id, {
-        onSuccess: () => {
-          toast.success('המטופל נמחק')
-          navigate('/patients')
-        },
-        onError: () => toast.error('שגיאה במחיקת המטופל'),
-      })
-    }
+    deleteMutation.mutate(patient!.id, {
+      onSuccess: () => {
+        toast.success({ title: 'המטופל נמחק' })
+        navigate('/patients')
+      },
+      onError: () => toast.error({ title: 'שגיאה במחיקת המטופל' }),
+    })
   }
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => navigate('/patients')}
-            className="p-2 rounded-md hover:bg-muted transition-colors"
             title="חזרה לרשימה"
           >
             <ArrowRight className="h-5 w-5" />
-          </button>
+          </Button>
           <h2 className="text-2xl font-bold">{patient.fullName}</h2>
           <span className={cn('px-2.5 py-1 rounded-full text-xs font-medium', statusColors[patient.status])}>
             {PATIENT_STATUS_LABELS[patient.status]}
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <Link
-            to={`/patients/${id}/edit`}
-            className="flex items-center gap-2 h-9 px-4 rounded-md border border-input bg-background text-sm font-medium hover:bg-muted transition-colors"
+          <Button
+            variant="secondary"
+            leftIcon={<Pencil className="h-4 w-4" />}
+            onClick={() => navigate(`/patients/${id}/edit`)}
           >
-            <Pencil className="h-4 w-4" />
             עריכה
-          </Link>
-          <button
-            onClick={handleDelete}
-            className="flex items-center gap-2 h-9 px-4 rounded-md border border-destructive/30 text-destructive text-sm font-medium hover:bg-destructive/10 transition-colors"
+          </Button>
+          <Button
+            variant="danger"
+            leftIcon={<Trash2 className="h-4 w-4" />}
+            onClick={() => setShowDeleteDialog(true)}
           >
-            <Trash2 className="h-4 w-4" />
             מחיקה
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -385,6 +419,23 @@ export default function PatientProfilePage() {
           <DocumentList ownerType="patient" ownerId={patient.id} />
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={showDeleteDialog}
+        onClose={() => setShowDeleteDialog(false)}
+        onConfirm={handleDelete}
+        title="מחיקת מטופל"
+        message={
+          `האם למחוק את המטופל "${patient.fullName}"? פעולה זו בלתי הפיכה.` +
+          (patientDocs.length > 0
+            ? `\nלמטופל זה ${patientDocs.length} מסמכים מצורפים. המסמכים לא יימחקו.`
+            : '')
+        }
+        confirmText="מחק"
+        cancelText="ביטול"
+        variant="danger"
+        loading={deleteMutation.isPending}
+      />
     </div>
   )
 }

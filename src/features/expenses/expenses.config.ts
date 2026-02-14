@@ -1,6 +1,8 @@
 import type { Expense, ExpenseCategory, PaymentMethod } from '@/types'
 import type { CrudConfig } from '@/components/crud'
 import type { CreateExpenseData, UpdateExpenseData } from '@/services/expenses'
+import { getAll } from '@/services/api'
+import type { Document } from '@/types'
 
 // ============================================
 // Category Labels & Options
@@ -263,4 +265,14 @@ export const expensesConfig: CrudConfig<Expense, CreateExpenseData, UpdateExpens
   }),
 
   getItemName: (expense) => expense.vendor,
+
+  getDeleteWarning: (expense) => {
+    const docs = getAll<Document>('clinic_documents').filter(
+      d => d.ownerType === 'expense' && d.ownerId === expense.id
+    )
+    if (docs.length > 0) {
+      return `להוצאה זו ${docs.length} מסמכים מצורפים. המסמכים לא יימחקו.`
+    }
+    return null
+  },
 }

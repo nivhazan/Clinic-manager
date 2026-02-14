@@ -122,7 +122,14 @@ export function CrudListPage<T, TCreate, TUpdate>({
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDelete}
         title={config.labels.deleteConfirmTitle}
-        message={deleteTarget ? config.labels.deleteConfirmMessage(deleteTarget) : ''}
+        message={
+          deleteTarget
+            ? config.labels.deleteConfirmMessage(deleteTarget) +
+              (config.getDeleteWarning?.(deleteTarget)
+                ? '\n' + config.getDeleteWarning(deleteTarget)
+                : '')
+            : ''
+        }
         confirmText="מחק"
         cancelText="ביטול"
         variant="danger"

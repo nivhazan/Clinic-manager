@@ -3,6 +3,9 @@ import { getAll, setAll, generateId, now } from './api'
 
 const KEY = 'clinic_documents'
 
+const ALLOWED_FILE_TYPES: DocumentFileType[] = ['jpg', 'png', 'webp', 'pdf']
+const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024 // 15MB
+
 export interface CreateDocumentData {
   ownerType: DocumentOwnerType
   ownerId?: string
@@ -33,7 +36,20 @@ export const documentsService = {
     return getAll<Document>(KEY).filter(d => d.ownerType === ownerType && d.ownerId === ownerId)
   },
 
+  async getCountByOwner(ownerType: DocumentOwnerType, ownerId: string): Promise<number> {
+    return getAll<Document>(KEY).filter(d => d.ownerType === ownerType && d.ownerId === ownerId).length
+  },
+
   async create(data: CreateDocumentData): Promise<Document> {
+    // Defense-in-depth: validate file type
+    if (!ALLOWED_FILE_TYPES.includes(data.fileType)) {
+      throw new Error(`סוג קובץ לא מורשה: ${data.fileType}`)
+    }
+    // Defense-in-depth: validate file size
+    if (data.fileSizeBytes > MAX_FILE_SIZE_BYTES) {
+      throw new Error(`הקובץ חורג מהגודל המקסימלי (${MAX_FILE_SIZE_BYTES} bytes)`)
+    }
+
     const documents = getAll<Document>(KEY)
     const document: Document = {
       ...data,

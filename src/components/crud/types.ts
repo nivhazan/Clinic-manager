@@ -181,6 +181,8 @@ export interface CrudConfig<T, TCreate, TUpdate> {
   fromFormData: (data: Record<string, unknown>) => TCreate | TUpdate
   // Display helpers
   getItemName: (item: T) => string
+  // Optional delete warning (e.g. linked documents)
+  getDeleteWarning?: (item: T) => string | null
 }
 
 // ============================================

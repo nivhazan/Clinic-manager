@@ -3,6 +3,7 @@ import { Upload, Camera, X, FileText } from 'lucide-react'
 import { Button, Card, CardContent, toast } from '@/components/ui'
 import { useCreateDocument } from '@/hooks/useDocuments'
 import { cn } from '@/lib/utils'
+import { validateFileBytes, createUploadRateLimiter } from '@/lib/upload-security'
 import type { DocumentOwnerType, DocumentFileType } from '@/types'
 
 interface DocumentUploadProps {
@@ -12,8 +13,11 @@ interface DocumentUploadProps {
   className?: string
 }
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
+const MAX_FILE_SIZE = 15 * 1024 * 1024 // 15MB
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
+
+// Rate limiter: 5 uploads per 60 seconds
+const uploadRateLimiter = createUploadRateLimiter(5, 60_000)
 
 export function DocumentUpload({
   ownerType,
@@ -29,8 +33,8 @@ export function DocumentUpload({
 
   const createMutation = useCreateDocument()
 
-  const handleFile = useCallback((file: File) => {
-    // Validate file type
+  const handleFile = useCallback(async (file: File) => {
+    // Validate file type (extension-based)
     if (!ACCEPTED_TYPES.includes(file.type)) {
       toast.error({ title: 'סוג קובץ לא נתמך', description: 'יש להעלות PDF או תמונה (JPG, PNG, WebP)' })
       return
@@ -38,7 +42,20 @@ export function DocumentUpload({
 
     // Validate file size
     if (file.size > MAX_FILE_SIZE) {
-      toast.error({ title: 'הקובץ גדול מדי', description: 'גודל מקסימלי: 10MB' })
+      toast.error({ title: 'הקובץ גדול מדי', description: 'גודל מקסימלי: 15MB' })
+      return
+    }
+
+    // Validate magic bytes (defense-in-depth)
+    const validBytes = await validateFileBytes(file)
+    if (!validBytes) {
+      toast.error({ title: 'קובץ לא תקין', description: 'תוכן הקובץ אינו תואם לסוג הקובץ המוצהר' })
+      return
+    }
+
+    // Rate limiting
+    if (!uploadRateLimiter.canUpload()) {
+      toast.error({ title: 'יותר מדי העלאות', description: 'נא להמתין דקה לפני העלאה נוספת' })
       return
     }
 
@@ -133,7 +150,7 @@ export function DocumentUpload({
           <CardContent className="flex flex-col items-center justify-center py-8">
             <Upload className="h-10 w-10 text-muted-foreground mb-3" />
             <p className="text-sm font-medium mb-1">גרור קובץ לכאן או לחץ לבחירה</p>
-            <p className="text-xs text-muted-foreground">PDF, JPG, PNG, WebP (עד 10MB)</p>
+            <p className="text-xs text-muted-foreground">PDF, JPG, PNG, WebP (עד 15MB)</p>
 
             <div className="flex items-center gap-3 mt-4">
               <Button

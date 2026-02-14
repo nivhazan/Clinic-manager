@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
 import { usePayments, useDeletePayment } from '@/hooks/usePayments'
+import { useDocumentsByOwner } from '@/hooks/useDocuments'
 import { usePatients } from '@/hooks/usePatients'
 import { useSessions } from '@/hooks/useSessions'
 import { PAYMENT_METHOD_LABELS, PAYMENT_TYPE_LABELS } from '@/lib/constants'
@@ -94,6 +95,7 @@ function PaymentsTab() {
   const [patientFilter, setPatientFilter] = useState('all')
   const [methodFilter, setMethodFilter] = useState('all')
   const [deleteTarget, setDeleteTarget] = useState<Payment | null>(null)
+  const { data: deleteTargetDocs = [] } = useDocumentsByOwner('payment', deleteTarget?.id ?? '')
 
   const today = useMemo(() => {
     const date = new Date()
@@ -383,7 +385,12 @@ function PaymentsTab() {
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDelete}
         title="מחיקת תשלום"
-        message={`האם למחוק תשלום של ${patientMap.get(deleteTarget?.patientId ?? '')?.fullName ?? ''} בסך ₪${deleteTarget?.amount ?? 0}?`}
+        message={
+          `האם למחוק תשלום של ${patientMap.get(deleteTarget?.patientId ?? '')?.fullName ?? ''} בסך ₪${deleteTarget?.amount ?? 0}?` +
+          (deleteTargetDocs.length > 0
+            ? `\nלתשלום זה ${deleteTargetDocs.length} מסמכים מצורפים. המסמכים לא יימחקו.`
+            : '')
+        }
         confirmText="מחק"
         cancelText="ביטול"
         variant="danger"
