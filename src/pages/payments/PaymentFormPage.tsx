@@ -1,10 +1,12 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
+import { Receipt } from 'lucide-react'
 import { usePayment, useCreatePayment, useUpdatePayment } from '@/hooks/usePayments'
 import { usePatients } from '@/hooks/usePatients'
 import { usePatientAppointments } from '@/hooks/useAppointments'
 import { usePatientSessions } from '@/hooks/useSessions'
+import { useDocument } from '@/hooks/useDocuments'
 import { ensureSessionForAppointment } from '@/services/sessions'
 import { PAYMENT_METHOD_LABELS, PAYMENT_TYPE_LABELS } from '@/lib/constants'
 import { PageHeader } from '@/components/layout'
@@ -22,7 +24,8 @@ import {
 } from '@/components/ui'
 import { NativeSelect } from '@/components/ui/Select'
 import { SkeletonCard } from '@/components/ui/Skeleton'
-import type { PaymentMethod, PaymentType } from '@/types'
+import { DocumentUpload, DocumentList, DocumentViewer } from '@/components/documents'
+import type { PaymentMethod, PaymentType, Document, ExtractedFields } from '@/types'
 
 interface PaymentFormData {
   patientId: string
@@ -111,9 +114,31 @@ export default function PaymentFormPage() {
   const [errors, setErrors] = useState<FormErrors>({})
   const [sessionAutoResolved, setSessionAutoResolved] = useState(false)
 
+  // Document state
+  const [uploadedDocId, setUploadedDocId] = useState<string | null>(null)
+  const [viewingDoc, setViewingDoc] = useState<Document | null>(null)
+  const { data: uploadedDoc } = useDocument(uploadedDocId ?? '')
+
   // Load patient sessions and appointments when patientId changes
   const { data: sessions = [] } = usePatientSessions(form.patientId)
   const { data: appointments = [] } = usePatientAppointments(form.patientId)
+
+  // When document OCR completes, show it for review
+  useEffect(() => {
+    if (uploadedDoc && uploadedDoc.ocrStatus === 'done' && !viewingDoc) {
+      setViewingDoc(uploadedDoc)
+    }
+  }, [uploadedDoc, viewingDoc])
+
+  // Handle OCR field application
+  const handleApplyFields = useCallback((fields: ExtractedFields) => {
+    setForm(prev => ({
+      ...prev,
+      ...(fields.amount !== undefined && { amount: String(fields.amount) }),
+      ...(fields.date && { date: fields.date }),
+    }))
+    toast.success({ title: 'השדות הוחלו על הטופס' })
+  }, [])
 
   useEffect(() => {
     if (payment) {
@@ -274,7 +299,8 @@ export default function PaymentFormPage() {
     <div>
       <PageHeader title={isEdit ? 'עריכת תשלום' : 'תשלום חדש'} backTo="/payments" />
 
-      <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-6xl">
+      <form onSubmit={handleSubmit} className="space-y-6 lg:col-span-2">
         <Card>
           <CardHeader>
             <CardTitle>פרטי תשלום</CardTitle>
@@ -417,6 +443,53 @@ export default function PaymentFormPage() {
           </Button>
         </div>
       </form>
+
+      {/* Document Upload Panel */}
+      <div className="space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Receipt className="h-4 w-4" />
+              סריקת קבלה
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              העלה קבלה וקבל מילוי אוטומטי של הסכום והתאריך
+            </p>
+            <DocumentUpload
+              ownerType="payment"
+              ownerId={id}
+              onUploadComplete={setUploadedDocId}
+            />
+
+            {/* Show processing status */}
+            {uploadedDoc && uploadedDoc.ocrStatus === 'processing' && (
+              <div className="text-sm text-center text-muted-foreground animate-pulse">
+                מעבד את המסמך...
+              </div>
+            )}
+
+            {/* Show documents if editing */}
+            {isEdit && id && (
+              <DocumentList
+                ownerType="payment"
+                ownerId={id}
+                onViewDocument={setViewingDoc}
+              />
+            )}
+          </CardContent>
+        </Card>
+      </div>
+      </div>
+
+      {/* Document Viewer Modal */}
+      <DocumentViewer
+        document={viewingDoc}
+        isOpen={!!viewingDoc}
+        onClose={() => setViewingDoc(null)}
+        onApplyFields={handleApplyFields}
+      />
     </div>
   )
 }
