@@ -38,7 +38,42 @@ Never use `window.confirm()` or `confirm()`. Always use `<ConfirmDialog>` from `
 
 ## Upload Rules
 
-- Max file size: **15MB**
+### DocumentFileType
+
+Defined in `src/types/index.ts`:
+
+```ts
+type DocumentFileType = 'pdf' | 'jpg' | 'jpeg' | 'png' | 'webp'
+```
+
+### ALLOWED_FILE_TYPES (server-side)
+
+Defined in `src/services/documents.ts` — used for defense-in-depth validation in `create()`:
+
+```ts
+const ALLOWED_FILE_TYPES: DocumentFileType[] = ['jpg', 'png', 'webp', 'pdf']
+```
+
+Note: `'jpeg'` exists in `DocumentFileType` for compatibility but is never produced by the upload component's `getFileType()` mapper — it always maps `image/jpeg` to `'jpg'`.
+
+### Document Owner Types
+
+Defined in `src/types/index.ts`:
+
+```ts
+type DocumentOwnerType = 'payment' | 'expense' | 'patient' | 'session' | 'other'
+```
+
+Documents are linked to their parent entity via `ownerType` + `ownerId`. When deleting a parent (patient, payment, expense), check for linked documents and warn the user — documents are **not** cascade-deleted.
+
+### Validation Pipeline
+
+1. **Extension-based MIME check** — `ACCEPTED_TYPES` in `DocumentUpload.tsx` (client)
+2. **Magic byte validation** — `validateFileBytes()` from `@/lib/upload-security` reads first 12 bytes, matches JPG (`FF D8 FF`), PNG (`89 50 4E 47`), WebP (`RIFF...WEBP`), PDF (`%PDF`)
+3. **Rate limiting** — `createUploadRateLimiter(5, 60_000)` — 5 uploads per 60s sliding window
+4. **Server-side defense** — `documentsService.create()` rejects unknown `fileType` and files > 15MB
+
+- Max file size: **15MB** (both client and service layer)
 - MIME validation: Magic byte check via `validateFileBytes()` from `@/lib/upload-security`
 - Rate limiting: 5 uploads per 60 seconds via `createUploadRateLimiter()`
 - Allowed types: JPG, PNG, WebP, PDF
