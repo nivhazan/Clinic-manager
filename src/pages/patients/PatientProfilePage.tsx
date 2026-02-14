@@ -17,6 +17,7 @@ import {
 import { cn } from '@/lib/utils'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { EmptyState } from '@/components/shared/EmptyState'
+import { DocumentUpload, DocumentList } from '@/components/documents'
 import type { Patient, PatientStatus, Appointment, AppointmentStatus, TherapySession, ProgressLevel } from '@/types'
 
 const statusColors: Record<PatientStatus, string> = {
@@ -38,6 +39,7 @@ const tabs = [
   { id: 'appointments', label: 'פגישות' },
   { id: 'sessions', label: 'טיפולים' },
   { id: 'payments', label: 'תשלומים' },
+  { id: 'documents', label: 'מסמכים' },
 ] as const
 
 function InfoField({ label, value }: { label: string; value?: string | number }) {
@@ -377,6 +379,12 @@ export default function PatientProfilePage() {
       {activeTab === 'appointments' && <AppointmentsTab patientId={patient.id} />}
       {activeTab === 'sessions' && <SessionsTab patientId={patient.id} />}
       {activeTab === 'payments' && <EmptyState message="תשלומים - בפיתוח" />}
+      {activeTab === 'documents' && (
+        <div className="space-y-6">
+          <DocumentUpload ownerType="patient" ownerId={patient.id} />
+          <DocumentList ownerType="patient" ownerId={patient.id} />
+        </div>
+      )}
     </div>
   )
 }
